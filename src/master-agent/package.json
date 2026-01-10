@@ -9,7 +9,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "poc": "tsx src/poc-simple.ts",
-    "server": "tsx src/server.ts"
+    "server": "tsx src/server.ts",
+    "simulate": "tsx src/mock-agent-simulator.ts"
   },
   "keywords": [
     "ai",

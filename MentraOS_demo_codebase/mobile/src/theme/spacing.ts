@@ -1,0 +1,30 @@
+/**
+  Use these spacings for margins/paddings and other whitespace throughout your app.
+ */
+export const spacing = {
+  s0: 0,
+  s0_5: 2,
+  s1: 4,
+  s1_5: 6,
+  s2: 8,
+  s2_5: 10,
+  s3: 12,
+  s3_5: 14,
+  s4: 16,
+  s5: 20,
+  s6: 24,
+  s7: 28,
+  s8: 32,
+  s9: 36,
+  s10: 40,
+  s11: 44,
+  s12: 48,
+  s13: 52,
+  s14: 56,
+  s15: 60,
+  s16: 64,
+  s17: 68,
+  s18: 72,
+  s19: 76,
+  s20: 80,
+} as const

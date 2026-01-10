@@ -202,6 +202,7 @@ class ExampleMentraOSApp extends AppServer {
     await glassesDisplay.showStatus("🎯 SOGA Ready");
     await glassesDisplay.showTemporary('Say "Hey SOGA" to start', 3000);
 
+
     // const result = await session.audio.playAudio({
     //   audioUrl: this.audioURL
     // })

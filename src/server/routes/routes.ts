@@ -600,6 +600,165 @@ export function setupWebviewRoutes(
     }
   });
 
+  /**
+   * Route: Query agent status from DaemonManager
+   * POST /api/master-agent/agent-status
+   * 
+   * This endpoint queries the status of agents managed by the DaemonManager.
+   * The query is processed by the Master Agent to provide intelligent status summaries.
+   */
+  app.post('/api/master-agent/agent-status', async (req: any, res: any) => {
+    try {
+      const { userId, query } = req.body;
+
+      // Validation: Required fields
+      if (!userId) {
+        return res.status(400).json({
+          error: 'userId is required',
+          code: 'MISSING_USER_ID'
+        });
+      }
+
+      if (!query) {
+        return res.status(400).json({
+          error: 'query is required',
+          code: 'MISSING_QUERY'
+        });
+      }
+
+      // Validation: Type and content
+      if (typeof userId !== 'string' || userId.trim() === '') {
+        return res.status(400).json({
+          error: 'userId must be a non-empty string',
+          code: 'INVALID_USER_ID'
+        });
+      }
+
+      if (typeof query !== 'string' || query.trim() === '') {
+        return res.status(400).json({
+          error: 'query must be a non-empty string',
+          code: 'INVALID_QUERY'
+        });
+      }
+
+      const sanitizedQuery = query.trim();
+      const sanitizedUserId = userId.trim();
+
+      console.log(`[Agent Status API] Querying agent status for user ${sanitizedUserId}: "${sanitizedQuery}"`);
+
+      // Get DaemonManager instance
+      const { getDaemonManager } = await import('../daemon');
+      const daemonManager = getDaemonManager();
+
+      // Get all daemons for this user
+      const userDaemons = daemonManager.getDaemonsForUser(sanitizedUserId);
+
+      // Get all agents across all user's daemons
+      const allAgents = userDaemons.flatMap(daemon => 
+        daemonManager.getAgentsForDaemon(daemon.daemonId)
+      );
+
+      // Build context for Master Agent
+      const statusContext = {
+        daemons: userDaemons.map(d => ({
+          daemonId: d.daemonId,
+          name: d.name,
+          status: d.status,
+          lastSeen: d.lastSeen,
+          activeAgents: d.activeAgents
+        })),
+        agents: allAgents.map(a => ({
+          agentId: a.agentId,
+          type: a.type,
+          status: a.status,
+          goal: a.goal,
+          currentStep: a.currentStep,
+          notes: a.notes,
+          result: a.result,
+          error: a.error,
+          executionTimeMs: a.executionTimeMs,
+          createdAt: a.createdAt,
+          startedAt: a.startedAt,
+          completedAt: a.completedAt
+        })),
+        totalDaemons: userDaemons.length,
+        onlineDaemons: userDaemons.filter(d => d.status === 'online').length,
+        totalAgents: allAgents.length,
+        activeAgents: allAgents.filter(a => 
+          a.status === 'running' || a.status === 'initializing'
+        ).length,
+        completedAgents: allAgents.filter(a => a.status === 'completed').length,
+        failedAgents: allAgents.filter(a => a.status === 'failed').length
+      };
+
+      // Build enhanced query for Master Agent with status context
+      const enhancedQuery = `
+User Query: ${sanitizedQuery}
+
+AGENT STATUS CONTEXT:
+${JSON.stringify(statusContext, null, 2)}
+
+Please analyze the agent status data above and respond to the user's query about agent status. 
+Provide a clear, concise summary with relevant details about daemon and agent states.
+`;
+
+      console.log(`[Agent Status API] Found ${statusContext.totalAgents} agents for user`);
+
+      // Forward to Master Agent server with enhanced context
+      const response = await fetch(`${MASTER_AGENT_URL}/agent/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: enhancedQuery })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        return res.status(response.status).json({
+          error: 'Master Agent service error',
+          code: 'MASTER_AGENT_ERROR',
+          message: errorData.error || errorData.message,
+          userId: sanitizedUserId
+        });
+      }
+
+      const data = await response.json();
+
+      // Return task ID to frontend with userId and status context
+      res.json({
+        success: true,
+        task_id: data.task_id,
+        status: data.status,
+        message: data.message,
+        userId: sanitizedUserId,
+        statusSummary: {
+          totalAgents: statusContext.totalAgents,
+          activeAgents: statusContext.activeAgents,
+          completedAgents: statusContext.completedAgents,
+          failedAgents: statusContext.failedAgents,
+          onlineDaemons: statusContext.onlineDaemons
+        }
+      });
+
+    } catch (error: any) {
+      console.error('[Agent Status API] Error:', error);
+
+      // Check if Master Agent server is unreachable
+      if (error.code === 'ECONNREFUSED') {
+        return res.status(503).json({
+          error: 'Master Agent service is not available',
+          code: 'SERVICE_UNAVAILABLE',
+          message: 'Master Agent server is not running. Start it with: bun run dev:agent'
+        });
+      }
+
+      res.status(500).json({
+        error: 'Internal server error',
+        code: 'INTERNAL_ERROR',
+        message: error.message || String(error)
+      });
+    }
+  });
+
   // Note: The /webview EJS route has been removed.
   // The React frontend is now served from the root route (/) by the SPA fallback in index.ts
 }
