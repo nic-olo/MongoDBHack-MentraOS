@@ -1,6 +1,6 @@
 # Master Agent - TypeScript Version
 
-AI orchestrator that analyzes queries, decides which tools to use, coordinates execution, and synthesizes results.
+AI orchestrator that analyzes queries, decides which sub-agents to deploy, coordinates execution, monitors behavior, and synthesizes results.
 
 ## Architecture
 
@@ -9,12 +9,29 @@ User Query
     ↓
 📊 Analysis: Master Agent uses Claude to understand task
     ↓
-🧠 Decision: Determines which tools to call (strategic thinking)
+🧠 Decision: Determines which SUB-AGENTS to spawn (strategic thinking)
     ↓
-⚡ Execution: Runs tools in optimal order
+⚡ Execution: Spawns agents, monitors progress, kills if off-track
     ↓
 🔬 Synthesis: Combines findings into actionable answer
+    ↓
+📡 Updates: Pushes real-time updates to user
 ```
+
+## Key Features
+
+### 🚀 **Agent Spawn/Kill/Monitor System**
+- **Spawn agents** dynamically based on task requirements
+- **Monitor progress** via real-time updates from sub-agents
+- **Auto-kill agents** that deviate >75% from mission objectives
+- **Manual termination** for manual intervention
+- **Real-time SSE stream** for live updates to frontend
+
+### 🤖 **Sub-Agent Types**
+- **Scout**: Finds files, maps dependencies, analyzes codebase structure
+- **Analyzer**: Deep code understanding, architecture analysis, pattern detection
+- **Implementer**: Writes/modifies code based on specifications
+- **Tester**: Runs tests and validates changes
 
 ## Quick Start
 
@@ -35,10 +52,23 @@ cp .env.example .env
 # ANTHROPIC_API_KEY=sk-ant-your-key-here
 ```
 
-### 3. Run POC
+### 3. Start API Server
 
 ```bash
-npm run poc
+# Start the Master Agent API server
+npm start
+
+# Or in development mode
+npm run dev
+```
+
+The server will start on `http://localhost:3001`
+
+### 4. Test the API
+
+```bash
+# Run the agent control test suite
+./test-agent-control.sh
 ```
 
 ## What You'll See

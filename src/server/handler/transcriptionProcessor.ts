@@ -127,9 +127,21 @@ export class TranscriptionProcessor {
   private removeWakeWord(text: string): string {
     let result = text;
 
+    // Try to remove wake word from the start
     for (const wakeWord of this.wakeWords) {
       if (result.startsWith(wakeWord)) {
         result = result.substring(wakeWord.length).trim();
+        break;
+      }
+    }
+
+    // Also try to remove wake word from anywhere in the text
+    // This handles cases like "hey ai what time is it" -> "what time is it"
+    for (const wakeWord of this.wakeWords) {
+      const wakeWordIndex = result.indexOf(wakeWord);
+      if (wakeWordIndex !== -1) {
+        // Remove the wake word and everything before it
+        result = result.substring(wakeWordIndex + wakeWord.length).trim();
         break;
       }
     }
@@ -177,10 +189,22 @@ export class TranscriptionProcessor {
       }
     } else {
       this.logger.info("⚠️  No command captured after wake word");
+
+      // Call the callback with empty string to signal no command
+      if (this.onReadyToProcess) {
+        this.onReadyToProcess('');
+      }
     }
 
     // Reset state
     this.reset();
+  }
+
+  /**
+   * Check if wake word has been detected and we're listening for commands
+   */
+  public isWakeWordActive(): boolean {
+    return this.isWakeWordDetected;
   }
 
   /**

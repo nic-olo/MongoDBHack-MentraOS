@@ -21,10 +21,11 @@
 import { AppServer, AppSession } from "@mentra/sdk";
 import { setupButtonHandler } from "./event/button";
 import { takePhoto } from "./modules/photo";
-import { setupWebviewRoutes, broadcastTranscriptionToClients, registerSession, unregisterSession } from "./routes/routes";
+import { setupWebviewRoutes, broadcastTranscriptionToClients, registerSession, unregisterSession, callMasterAgentFromVoice, pollAndSpeakResult } from "./routes/routes";
 import { playAudio, speak } from "./modules/audio";
 import { setupTranscription } from "./modules/transcription";
 import { createTranscriptionProcessor, TranscriptionProcessor } from "./handler/transcriptionProcessor";
+import { createGlassesDisplayManager, GlassesDisplayManager } from "./manager/glassesDisplayManager";
 import { TRANSCRIPTION_CONFIG } from "./const/wakeWords";
 import * as path from "path";
 
@@ -60,6 +61,7 @@ const PORT = parseInt(process.env.PORT || "3000");
 class ExampleMentraOSApp extends AppServer {
   private photosMap: Map<string, StoredPhoto> = new Map();
   private transcriptionProcessors: Map<string, TranscriptionProcessor> = new Map();
+  private glassesDisplays: Map<string, GlassesDisplayManager> = new Map();
 
   constructor() {
     super({
@@ -142,9 +144,18 @@ class ExampleMentraOSApp extends AppServer {
     userId: string
   ): Promise<void> {
     this.logger.info(`Session started for user ${userId}`);
-
+    session.layouts.showTextWall("hello world");
     // Register this session for audio playback from the frontend
     registerSession(userId, session);
+
+    // Create glasses display manager for this user
+    const glassesDisplay = createGlassesDisplayManager(session, userId, this.logger);
+    this.glassesDisplays.set(userId, glassesDisplay);
+
+    // Show welcome message on glasses
+    await glassesDisplay.showStatus('🎯 SOGA Ready');
+    await glassesDisplay.showTemporary('Say "Hey SOGA" to start', 3000);
+
 
     // const result = await session.audio.playAudio({
     //   audioUrl: this.audioURL
@@ -154,18 +165,136 @@ class ExampleMentraOSApp extends AppServer {
     // Create transcription processor for this user
     const transcriptionProcessor = createTranscriptionProcessor({
       ...TRANSCRIPTION_CONFIG, // Use wake words and silence threshold from constants
-      onWakeWordDetected: () => {
+      onWakeWordDetected: async () => {
+        console.log('\n========================================');
+        console.log('🎙️  WAKE WORD DETECTED');
+        console.log(`User: ${userId}`);
+        console.log('Status: Listening for command...');
+        console.log('========================================\n');
         this.logger.info(`🎙️ Wake word detected for user ${userId}`);
-        // Optionally notify the frontend
+
+        // Show on glasses
+        await glassesDisplay.showWakeWord();
+
+        // Notify the frontend
         broadcastTranscriptionToClients("Wake word detected - listening...", true, userId);
       },
-      onReadyToProcess: (command) => {
+      onReadyToProcess: async (command) => {
+        // Check if command is empty (no command captured after wake word)
+        if (!command || command.trim() === '') {
+          console.log('\n========================================');
+          console.log('⚠️  NO COMMAND CAPTURED');
+          console.log(`User: ${userId}`);
+          console.log('Status: Clearing display');
+          console.log('========================================\n');
+
+          this.logger.info(`⚠️  No command captured for user ${userId} - clearing display`);
+
+          // Clear the glasses display
+          await glassesDisplay.clear();
+
+          // Notify frontend
+          broadcastTranscriptionToClients('No command captured', true, userId);
+
+          return; // Don't proceed to Master Agent
+        }
+
+        console.log('\n========================================');
+        console.log('✅ VOICE COMMAND CAPTURED');
+        console.log(`User: ${userId}`);
+        console.log(`Command: "${command}"`);
+        console.log('Status: Ready to process');
+        console.log('========================================\n');
+
         this.logger.info(`✅ Ready to process command for user ${userId}: "${command}"`);
+
+        // Show command on glasses
+        await glassesDisplay.showCommand(command);
+
         // Broadcast the command to process
         broadcastTranscriptionToClients(`Processing: ${command}`, true, userId);
 
-        // TODO: Add your command processing logic here
-        // For example: call an AI service, execute a command, etc.
+        // Call Master Agent to process the voice command
+        try {
+          console.log('\n========================================');
+          console.log('🚀 SENDING TO MASTER AGENT');
+          console.log(`User: ${userId}`);
+          console.log(`Query: "${command}"`);
+          console.log('Destination: Master Agent Server (port 3001)');
+          console.log('========================================\n');
+
+          // Show processing on glasses
+          await glassesDisplay.showProcessing('Sending to AI agent...');
+
+          const taskId = await callMasterAgentFromVoice(
+            userId,
+            command,
+            async (progressMsg) => {
+              this.logger.info(`[Master Agent] ${progressMsg}`);
+              broadcastTranscriptionToClients(progressMsg, true, userId);
+              await glassesDisplay.showProcessing(progressMsg);
+            }
+          );
+
+          console.log('\n========================================');
+          console.log('✅ MASTER AGENT RECEIVED REQUEST');
+          console.log(`Task ID: ${taskId}`);
+          console.log(`User: ${userId}`);
+          console.log('Status: Processing with sub-agents...');
+          console.log('Next: Polling for results every 2 seconds');
+          console.log('========================================\n');
+
+          this.logger.info(`[Master Agent] Task submitted: ${taskId}`);
+
+          // Show agent activity on glasses
+          await glassesDisplay.showAgentActivity('Master Agent', 'Analyzing your request...');
+
+          broadcastTranscriptionToClients('I\'m thinking...', true, userId);
+
+          // Poll for results and log them (audio disabled for now)
+          // This runs in the background and doesn't block
+          // Pass the display manager to show progress
+          pollAndSpeakResult(taskId, userId, session, this.logger, glassesDisplay).catch(async (error) => {
+            console.log('\n========================================');
+            console.log('❌ ERROR IN POLLING/SPEAKING');
+            console.log(`Task ID: ${taskId}`);
+            console.log(`User: ${userId}`);
+            console.log(`Error: ${error}`);
+            console.log('========================================\n');
+            this.logger.error(`[Master Agent] Error polling/speaking result:`, error);
+            await glassesDisplay.showError('Processing error occurred');
+
+            // Clear display after 5 seconds
+            setTimeout(async () => {
+              await glassesDisplay.clear();
+            }, 5000);
+          });
+        } catch (error) {
+          console.log('\n========================================');
+          console.log('❌ ERROR CALLING MASTER AGENT');
+          console.log(`User: ${userId}`);
+          console.log(`Command: "${command}"`);
+          console.log(`Error: ${error}`);
+          console.log('========================================\n');
+
+          this.logger.error(`[Master Agent] Error calling Master Agent:`, error);
+          broadcastTranscriptionToClients('Sorry, I encountered an error.', true, userId);
+
+          // Show error on glasses
+          await glassesDisplay.showError('Failed to connect to AI');
+
+          // Clear display after 5 seconds
+          setTimeout(async () => {
+            await glassesDisplay.clear();
+          }, 5000);
+
+          // TODO: Re-enable audio when ready
+          // try {
+          //   await session.audio.speak('Sorry, I encountered an error processing your command.');
+          // } catch (speakError) {
+          //   this.logger.error(`[Master Agent] Error speaking error message:`, speakError);
+          // }
+        }
       },
       logger: this.logger
     });
@@ -193,6 +322,11 @@ class ExampleMentraOSApp extends AppServer {
 
         // Process partial transcription
         transcriptionProcessor.processTranscription(partialText, false);
+
+        // Show live transcription on glasses ONLY if wake word is detected
+        if (transcriptionProcessor.isWakeWordActive()) {
+          glassesDisplay.showStatus(partialText);
+        }
 
         // Broadcast partial transcription to this user's SSE clients only
         broadcastTranscriptionToClients(partialText, false, userId);
@@ -225,6 +359,12 @@ class ExampleMentraOSApp extends AppServer {
     if (processor) {
       processor.destroy();
       this.transcriptionProcessors.delete(userId);
+    }
+
+    // Clean up glasses display manager for this user
+    const glassesDisplay = this.glassesDisplays.get(userId);
+    if (glassesDisplay) {
+      this.glassesDisplays.delete(userId);
     }
 
     // Unregister the session
