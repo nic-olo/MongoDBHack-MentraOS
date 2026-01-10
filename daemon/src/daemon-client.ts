@@ -151,7 +151,7 @@ export class DaemonClient extends EventEmitter {
    * Send heartbeat to cloud
    */
   async sendHeartbeat(payload: HeartbeatPayload): Promise<boolean> {
-    return this.post("/api/daemon/heartbeat", payload);
+    return this.post("/daemon-api/daemon/heartbeat", payload);
   }
 
   /**
@@ -161,7 +161,7 @@ export class DaemonClient extends EventEmitter {
     agentId: string,
     payload: StatusUpdatePayload,
   ): Promise<boolean> {
-    return this.post(`/api/subagent/${agentId}/status`, payload);
+    return this.post(`/daemon-api/subagent/${agentId}/status`, payload);
   }
 
   /**
@@ -171,14 +171,14 @@ export class DaemonClient extends EventEmitter {
     agentId: string,
     payload: CompletePayload,
   ): Promise<boolean> {
-    return this.post(`/api/subagent/${agentId}/complete`, payload);
+    return this.post(`/daemon-api/subagent/${agentId}/complete`, payload);
   }
 
   /**
    * Send agent log
    */
   async sendLog(agentId: string, payload: LogPayload): Promise<boolean> {
-    return this.post(`/api/subagent/${agentId}/log`, payload);
+    return this.post(`/daemon-api/subagent/${agentId}/log`, payload);
   }
 
   // ===========================================================================
@@ -280,7 +280,7 @@ export class DaemonClient extends EventEmitter {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${this.config.token}`,
+          "X-Daemon-Email": this.config.email,
         },
         body: JSON.stringify(body),
       });
