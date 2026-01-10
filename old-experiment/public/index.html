@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bun Agent</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+
+<body>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h1>🤖 Bun Agent</h1>
+      </div>
+      <div class="sidebar-content">
+        <button id="newChatBtn" class="new-chat-btn">+ New Chat</button>
+      </div>
+    </aside>
+
+    <!-- Main Area -->
+    <main class="main-container">
+      <!-- Chat Area -->
+      <div class="chat-area">
+        <div id="messages" class="messages">
+          <div class="welcome">
+            <h2>Welcome to Bun Agent</h2>
+            <p>Type a goal and watch the agent work in the terminal below.</p>
+          </div>
+        </div>
+
+        <!-- Chat Input -->
+        <div class="chat-input-container">
+          <textarea id="chatInput" placeholder="Enter a goal for the agent..." rows="1"></textarea>
+          <button id="sendBtn" class="send-btn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path d="M22 2L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+              <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Bottom Panel: Terminal + Scratchpad -->
+      <div class="bottom-panel">
+        <div class="panel-header">
+          <div class="panel-tabs">
+            <button id="terminalTab" class="panel-tab active">Terminal</button>
+            <button id="scratchpadTab" class="panel-tab">Scratchpad</button>
+          </div>
+          <div class="panel-controls">
+            <button id="togglePanel" class="ghost small">▼</button>
+          </div>
+        </div>
+
+        <!-- Terminal View -->
+        <div id="terminalView" class="panel-content active">
+          <div id="terminal"></div>
+        </div>
+
+        <!-- Scratchpad View -->
+        <div id="scratchpadView" class="panel-content">
+          <div class="scratchpad">
+            <div class="scratchpad-section">
+              <label>🎯 Goal</label>
+              <div id="spGoal" class="sp-value">No active goal</div>
+            </div>
+            <div class="scratchpad-section">
+              <label>📍 Status</label>
+              <div id="spStatus" class="sp-value sp-status" data-status="idle">Idle</div>
+            </div>
+            <div class="scratchpad-section">
+              <label>⏱ Current Step</label>
+              <div id="spStep" class="sp-value">-</div>
+            </div>
+            <div class="scratchpad-section">
+              <label>📝 Notes</label>
+              <ul id="spNotes" class="sp-notes">
+                <li>Agent not started</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+  <script>
+    // State
+    let currentTerminal = null;
+    let term = null;
+    let ws = null;
+    let fitAddon = null;
+    let eventSource = null;
+
+    // Elements
+    const messagesEl = document.getElementById('messages');
+    const chatInput = document.getElementById('chatInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const newChatBtn = document.getElementById('newChatBtn');
+
+    const terminalTab = document.getElementById('terminalTab');
+    const scratchpadTab = document.getElementById('scratchpadTab');
+    const terminalView = document.getElementById('terminalView');
+    const scratchpadView = document.getElementById('scratchpadView');
+    const togglePanel = document.getElementById('togglePanel');
+
+    const spGoal = document.getElementById('spGoal');
+    const spStatus = document.getElementById('spStatus');
+    const spStep = document.getElementById('spStep');
+    const spNotes = document.getElementById('spNotes');
+
+    // Initialize xterm.js
+    function initXterm() {
+      term = new Terminal({
+        cursorBlink: true,
+        fontSize: 13,
+        fontFamily: "'SF Mono', 'Fira Code', monospace",
+        theme: {
+          background: '#0d0d0d',
+          foreground: '#ececec',
+          cursor: '#8b5cf6',
+        },
+      });
+
+      fitAddon = new FitAddon.FitAddon();
+      term.loadAddon(fitAddon);
+      term.open(document.getElementById('terminal'));
+      fitAddon.fit();
+
+      term.onData((data) => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'input', data }));
+        }
+      });
+
+      window.addEventListener('resize', () => {
+        if (fitAddon) fitAddon.fit();
+      });
+
+      term.write('\x1b[90mTerminal ready. Waiting for agent...\x1b[0m\r\n');
+    }
+
+    // Connect to SSE for scratchpad updates
+    function connectSSE() {
+      if (eventSource) eventSource.close();
+      eventSource = new EventSource('/api/events');
+
+      eventSource.onmessage = (e) => {
+        const event = JSON.parse(e.data);
+        if (event.type === 'scratchpad_update' && event.terminalId === currentTerminal) {
+          updateScratchpadUI(event.scratchpad);
+        }
+      };
+
+      eventSource.onerror = () => {
+        setTimeout(connectSSE, 3000);
+      };
+    }
+
+    // Update scratchpad UI
+    function updateScratchpadUI(sp) {
+      spGoal.textContent = sp.goal || 'No goal';
+      spStatus.textContent = sp.status;
+      spStatus.dataset.status = sp.status;
+      spStep.textContent = sp.currentStep || '-';
+
+      spNotes.innerHTML = '';
+      if (sp.notes.length === 0) {
+        spNotes.innerHTML = '<li>No notes yet</li>';
+      } else {
+        sp.notes.forEach(note => {
+          const li = document.createElement('li');
+          li.textContent = note;
+          spNotes.appendChild(li);
+        });
+      }
+    }
+
+    // Create terminal and start agent
+    async function startAgent(goal) {
+      // Create terminal
+      const res = await fetch('/api/terminal', { method: 'POST' });
+      const data = await res.json();
+      currentTerminal = data.terminalId;
+
+      // Connect WebSocket
+      term.clear();
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${protocol}//${window.location.host}/ws/terminal?id=${currentTerminal}`);
+
+      ws.onopen = () => {
+        term.write('\x1b[32mConnected\x1b[0m\r\n\r\n');
+        ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+      };
+
+      ws.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg.type === 'output') {
+            term.write(msg.data);
+            term.scrollToBottom();
+          }
+        } catch {
+          term.write(e.data);
+          term.scrollToBottom();
+        }
+      };
+
+      ws.onclose = () => term.write('\r\n\x1b[33mDisconnected\x1b[0m\r\n');
+
+      // Start AI
+      await fetch(`/api/terminal/${currentTerminal}/ai`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ goal })
+      });
+    }
+
+    // Add message to chat
+    function addMessage(role, content) {
+      const welcome = messagesEl.querySelector('.welcome');
+      if (welcome) welcome.remove();
+
+      const div = document.createElement('div');
+      div.className = `message ${role}`;
+      div.innerHTML = `<div class="message-content">${escapeHtml(content)}</div>`;
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Send goal
+    async function sendGoal() {
+      const goal = chatInput.value.trim();
+      if (!goal) return;
+
+      chatInput.value = '';
+      addMessage('user', goal);
+      addMessage('assistant', 'Starting agent... Watch the terminal below.');
+
+      await startAgent(goal);
+    }
+
+    // Tab switching
+    terminalTab.addEventListener('click', () => {
+      terminalTab.classList.add('active');
+      scratchpadTab.classList.remove('active');
+      terminalView.classList.add('active');
+      scratchpadView.classList.remove('active');
+      if (fitAddon) fitAddon.fit();
+    });
+
+    scratchpadTab.addEventListener('click', () => {
+      scratchpadTab.classList.add('active');
+      terminalTab.classList.remove('active');
+      scratchpadView.classList.add('active');
+      terminalView.classList.remove('active');
+    });
+
+    // Panel toggle
+    let panelCollapsed = false;
+    togglePanel.addEventListener('click', () => {
+      panelCollapsed = !panelCollapsed;
+      document.querySelector('.bottom-panel').classList.toggle('collapsed', panelCollapsed);
+      togglePanel.textContent = panelCollapsed ? '▲' : '▼';
+      if (!panelCollapsed && fitAddon) setTimeout(() => fitAddon.fit(), 100);
+    });
+
+    // Event listeners
+    sendBtn.addEventListener('click', sendGoal);
+    chatInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendGoal();
+      }
+    });
+
+    newChatBtn.addEventListener('click', () => {
+      if (currentTerminal) {
+        fetch(`/api/terminal/${currentTerminal}`, { method: 'DELETE' });
+      }
+      currentTerminal = null;
+      messagesEl.innerHTML = `
+        <div class="welcome">
+          <h2>Welcome to Bun Agent</h2>
+          <p>Type a goal and watch the agent work in the terminal below.</p>
+        </div>
+      `;
+      term.clear();
+      term.write('\x1b[90mTerminal ready. Waiting for agent...\x1b[0m\r\n');
+      updateScratchpadUI({ goal: '', status: 'idle', currentStep: '', notes: [] });
+    });
+
+    // Init
+    initXterm();
+    connectSSE();
+  </script>
+</body>
+
+</html>
