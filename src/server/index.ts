@@ -25,7 +25,7 @@ import { setupWebviewRoutes, broadcastTranscriptionToClients, registerSession, u
 import { playAudio, speak } from "./modules/audio";
 import { setupTranscription } from "./modules/transcription";
 import { createTranscriptionProcessor, TranscriptionProcessor } from "./handler/transcriptionProcessor";
-import { createGlassesDisplayManager, GlassesDisplayManager } from "./handler/glassesDisplayManager";
+import { createGlassesDisplayManager, GlassesDisplayManager } from "./manager/glassesDisplayManager";
 import { TRANSCRIPTION_CONFIG } from "./const/wakeWords";
 import * as path from "path";
 
