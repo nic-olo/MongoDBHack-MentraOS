@@ -86,10 +86,19 @@ export async function getTaskStatus(
 export async function pollTaskUntilComplete(
   taskId: string,
   userId: string,
-  onProgress?: (status: string) => void,
+  onProgress?: (message: string, taskResponse: TaskResponse) => void,
   maxAttempts: number = 60 // 2 minutes max
 ): Promise<TaskResponse> {
   let attempts = 0;
+  const progressMessages = [
+    'Analyzing your request...',
+    'Exploring the codebase...',
+    'Deploying specialist agents...',
+    'Executing sub-agents...',
+    'Gathering results...',
+    'Synthesizing findings...',
+    'Finalizing response...'
+  ];
 
   while (attempts < maxAttempts) {
     const taskResponse = await getTaskStatus(taskId, userId);
@@ -98,9 +107,10 @@ export async function pollTaskUntilComplete(
       return taskResponse;
     }
 
-    // Call progress callback
+    // Call progress callback with contextual message
     if (onProgress) {
-      onProgress(taskResponse.status);
+      const messageIndex = Math.min(Math.floor(attempts / 3), progressMessages.length - 1);
+      onProgress(progressMessages[messageIndex], taskResponse);
     }
 
     // Wait 2 seconds before next poll
@@ -117,20 +127,20 @@ export async function pollTaskUntilComplete(
 export async function queryMasterAgent(
   userId: string,
   query: string,
-  onProgress?: (message: string) => void
+  onProgress?: (message: string, taskResponse?: TaskResponse) => void
 ): Promise<TaskResponse> {
   // Step 1: Submit query
-  if (onProgress) onProgress('Submitting query...');
+  if (onProgress) onProgress('Submitting query to Master Agent...');
   const submitResponse = await submitQuery(userId, query);
 
   // Step 2: Poll for completion
-  if (onProgress) onProgress('Processing query...');
+  if (onProgress) onProgress('Agent session started...');
   const result = await pollTaskUntilComplete(
     submitResponse.task_id,
     userId,
-    (status) => {
+    (message, taskResponse) => {
       if (onProgress) {
-        onProgress(`Status: ${status}`);
+        onProgress(message, taskResponse);
       }
     }
   );
