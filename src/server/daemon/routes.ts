@@ -18,7 +18,12 @@
  * ```
  */
 
-import { Router, type Request, type Response, type NextFunction } from "express";
+import {
+  Router,
+  type Request,
+  type Response,
+  type NextFunction,
+} from "express";
 import type { DaemonManager } from "./DaemonManager";
 import type {
   HeartbeatPayload,
@@ -29,13 +34,28 @@ import type {
 
 /**
  * Middleware to authenticate daemon requests
+ * Uses email from X-Daemon-Email header for simple auth
  */
 function authMiddleware(daemonManager: DaemonManager) {
   return (req: Request, res: Response, next: NextFunction) => {
+    // Try X-Daemon-Email header first (simple auth)
+    const email = req.headers["x-daemon-email"] as string;
+
+    if (email) {
+      // Simple email-based auth for hackathon
+      const daemonId = `daemon_${email}`;
+      (req as any).daemonId = daemonId;
+      (req as any).userId = email;
+      return next();
+    }
+
+    // Fallback to Bearer token auth
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ error: "Missing or invalid authorization header" });
+      return res
+        .status(401)
+        .json({ error: "Missing X-Daemon-Email header or Authorization" });
     }
 
     const token = authHeader.slice(7); // Remove "Bearer "
@@ -100,7 +120,9 @@ export function createDaemonRoutes(daemonManager: DaemonManager): Router {
     }
 
     if (agent.daemonId !== daemonId) {
-      return res.status(403).json({ error: "Agent does not belong to this daemon" });
+      return res
+        .status(403)
+        .json({ error: "Agent does not belong to this daemon" });
     }
 
     daemonManager.onAgentStatus(agentId, payload);
@@ -129,7 +151,9 @@ export function createDaemonRoutes(daemonManager: DaemonManager): Router {
     }
 
     if (agent.daemonId !== daemonId) {
-      return res.status(403).json({ error: "Agent does not belong to this daemon" });
+      return res
+        .status(403)
+        .json({ error: "Agent does not belong to this daemon" });
     }
 
     daemonManager.onAgentComplete(agentId, payload);
@@ -158,7 +182,9 @@ export function createDaemonRoutes(daemonManager: DaemonManager): Router {
     }
 
     if (agent.daemonId !== daemonId) {
-      return res.status(403).json({ error: "Agent does not belong to this daemon" });
+      return res
+        .status(403)
+        .json({ error: "Agent does not belong to this daemon" });
     }
 
     daemonManager.onAgentLog(agentId, payload);
@@ -208,7 +234,9 @@ export function createBunHandlers(daemonManager: DaemonManager) {
   /**
    * Authenticate request and return daemon info
    */
-  function authenticate(req: Request): { daemonId: string; userId: string } | null {
+  function authenticate(
+    req: Request,
+  ): { daemonId: string; userId: string } | null {
     const authHeader = req.headers.get("authorization");
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {

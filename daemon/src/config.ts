@@ -47,11 +47,11 @@ export function saveConfig(config: DaemonConfig): void {
 }
 
 /**
- * Check if daemon is configured (has token)
+ * Check if daemon is configured (has email)
  */
 export function isConfigured(): boolean {
   const config = loadConfig();
-  return config !== null && !!config.token && !!config.serverUrl;
+  return config !== null && !!config.email && !!config.serverUrl;
 }
 
 /**
@@ -75,4 +75,5 @@ export function getConfigDir(): string {
 /**
  * Default server URL (can be overridden)
  */
-export const DEFAULT_SERVER_URL = process.env.DAEMON_SERVER_URL || "http://localhost:3000";
+export const DEFAULT_SERVER_URL =
+  process.env.DAEMON_SERVER_URL || "http://localhost:3000";
