@@ -122,6 +122,57 @@ export async function pollTaskUntilComplete(
 }
 
 /**
+ * Submit an agent status query
+ * Returns immediately with a task ID
+ */
+export async function submitAgentStatusQuery(
+  userId: string,
+  query: string
+): Promise<SubmitQueryResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/master-agent/agent-status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, query })
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    const error = data as MasterAgentError;
+    throw new Error(error.message || error.error);
+  }
+
+  return data as SubmitQueryResponse;
+}
+
+/**
+ * Combined function: Submit agent status query and wait for result
+ */
+export async function queryAgentStatus(
+  userId: string,
+  query: string,
+  onProgress?: (message: string, taskResponse?: TaskResponse) => void
+): Promise<TaskResponse> {
+  // Step 1: Submit status query
+  if (onProgress) onProgress('Querying agent status...');
+  const submitResponse = await submitAgentStatusQuery(userId, query);
+
+  // Step 2: Poll for completion
+  if (onProgress) onProgress('Analyzing agent data...');
+  const result = await pollTaskUntilComplete(
+    submitResponse.task_id,
+    userId,
+    (message, taskResponse) => {
+      if (onProgress) {
+        onProgress(message, taskResponse);
+      }
+    }
+  );
+
+  return result;
+}
+
+/**
  * Combined function: Submit query and wait for result
  */
 export async function queryMasterAgent(
