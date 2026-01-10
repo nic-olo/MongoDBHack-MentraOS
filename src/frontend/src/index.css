@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+/* Dark Mode Theme */
+.dark {
+  --bg: #ffffff;
+  --bottom-nav: #f1f1f1;
+
+}
+
+/* Light Mode Theme */
+.light {
+  --bg: #ffffff;
+  --bottom-nav: #f1f1f1;
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 20s linear infinite;
+}
+
+@keyframes grid-pulse {
+  0%,
+  100% {
+    opacity: 0.02;
+  }
+  50% {
+    opacity: 0.08;
+  }
+}
+
+.animate-grid-pulse {
+  animation: grid-pulse 4s ease-in-out infinite;
+}

@@ -1,0 +1,38 @@
+{
+  "name": "mentraos-photo-taker-example-app",
+  "version": "1.0.0",
+  "main": "index.js",
+  "workspaces": [
+    "src/frontend"
+  ],
+  "scripts": {
+    "start": "bun src/server/index.ts",
+    "dev": "concurrently \"bun run dev:backend\" \"bun run dev:frontend\"",
+    "dev:backend": "bun --hot src/server/index.ts",
+    "dev:frontend": "cd src/frontend && bun run dev",
+    "build:frontend": "cd src/frontend && bun run build",
+    "build": "bun run build:frontend",
+    "start:prod": "bun run build && bun run start",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Aryan Farhang",
+  "license": "ISC",
+  "description": "Example app for taking photos with MentraOS",
+  "dependencies": {
+    "@mentra/react": "^2.0.2",
+    "@mentra/sdk": "2.1.29",
+    "ejs": "^3.1.10",
+    "express": "^4.21.2",
+    "http-proxy-middleware": "^3.0.5",
+    "mongoose": "^9.0.2",
+    "ws": "^8.18.1"
+  },
+  "devDependencies": {
+    "@types/ejs": "^3.1.5",
+    "@types/express": "^5.0.1",
+    "@types/node": "^22.13.14",
+    "@types/ws": "^8.18.0",
+    "concurrently": "^9.2.1",
+    "typescript": "^5.0.0"
+  }
+}
