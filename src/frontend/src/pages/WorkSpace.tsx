@@ -5,6 +5,7 @@ import SideNav from "../ui/left-side-nav";
 import { isMobileDevice } from "../util/deviceDetection";
 import { queryMasterAgent, queryAgentStatus } from "../api/masterAgent";
 import AgentMessage from "../components/AgentMessage";
+import { createConversation, addMessage, getConversation } from "../api/conversations";
 
 interface Transcription {
   text: string;
@@ -18,6 +19,9 @@ interface Transcription {
 function Test() {
   const isMobile = isMobileDevice();
 
+  // TODO: Get actual userId from auth context (use useMentraAuth hook)
+  const userId = 'user_123';
+
   // Chat state management
   const [messages, setMessages] = useState<Array<{
     role: 'user' | 'assistant',
@@ -27,9 +31,41 @@ function Test() {
   }>>([]);
   const [transcriptions] = useState<Transcription[]>([]);
   const [isSideNavOpen, setIsSideNavOpen] = useState(false);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [conversationRefreshTrigger, setConversationRefreshTrigger] = useState(0);
 
   const hasMessages = messages.length > 0;
   const isAgentRunning = messages.length > 0 && messages[messages.length - 1]?.isProcessing;
+
+  // Helper to refresh conversation sidebar
+  const refreshConversations = () => {
+    setConversationRefreshTrigger(Date.now());
+  };
+
+  /**
+   * Load a conversation from history
+   */
+  const loadConversation = async (conversationId: string) => {
+    try {
+      const conversation = await getConversation(conversationId);
+      setCurrentConversationId(conversation.id);
+      setMessages(conversation.messages?.map(msg => ({
+        role: msg.role,
+        content: msg.content,
+        isProcessing: false
+      })) || []);
+    } catch (error) {
+      console.error('Failed to load conversation:', error);
+    }
+  };
+
+  /**
+   * Start a new conversation
+   */
+  const startNewConversation = () => {
+    setCurrentConversationId(null);
+    setMessages([]);
+  };
 
   const handleSendMessage = async (message: string) => {
     console.log('Sent:', message);
@@ -46,9 +82,6 @@ function Test() {
     }]);
 
     try {
-      // TODO: Get actual userId from auth context (use useMentraAuth hook)
-      const userId = 'user_123';
-      
       // Check if the message contains the keyword "status"
       const lowerMessage = message.toLowerCase();
       const isStatusQuery = lowerMessage.includes('status');
@@ -114,31 +147,70 @@ function Test() {
       }
 
       // Remove processing message and add actual response
+      let assistantContent = '';
+      if (result.status === 'completed' && result.result) {
+        assistantContent = result.result.synthesis;
+      } else if (result.status === 'failed') {
+        assistantContent = `Error: ${result.error || 'Task failed'}`;
+      } else {
+        assistantContent = 'Task did not complete successfully';
+      }
+
       setMessages(prev => {
         const withoutProcessing = prev.slice(0, -1);
-
-        if (result.status === 'completed' && result.result) {
-          return [...withoutProcessing, {
-            role: 'assistant',
-            content: result.result.synthesis,
-            isProcessing: false
-          }];
-        } else if (result.status === 'failed') {
-          return [...withoutProcessing, {
-            role: 'assistant',
-            content: `Error: ${result.error || 'Task failed'}`,
-            isProcessing: false
-          }];
-        } else {
-          return [...withoutProcessing, {
-            role: 'assistant',
-            content: 'Task did not complete successfully',
-            isProcessing: false
-          }];
-        }
+        return [...withoutProcessing, {
+          role: 'assistant',
+          content: assistantContent,
+          isProcessing: false
+        }];
       });
 
       console.log('Master Agent full response:', result);
+
+      // Save conversation to database
+      try {
+        if (!currentConversationId) {
+          // Create new conversation with first message
+          const conversation = await createConversation(
+            userId,
+            {
+              role: 'user',
+              content: message,
+              isStatusQuery
+            }
+          );
+          setCurrentConversationId(conversation.id);
+          console.log('Created new conversation:', conversation.id);
+
+          // Add assistant response
+          await addMessage(conversation.id, {
+            role: 'assistant',
+            content: assistantContent,
+            isStatusQuery
+          });
+          
+          // Refresh conversation list to show new conversation
+          refreshConversations();
+        } else {
+          // Add both messages to existing conversation
+          await addMessage(currentConversationId, {
+            role: 'user',
+            content: message,
+            isStatusQuery
+          });
+          await addMessage(currentConversationId, {
+            role: 'assistant',
+            content: assistantContent,
+            isStatusQuery
+          });
+          
+          // Refresh conversation list to update timestamps
+          refreshConversations();
+        }
+      } catch (dbError) {
+        console.error('Failed to save conversation:', dbError);
+        // Continue anyway - don't block user experience
+      }
     } catch (error) {
       console.error('Master Agent Error:', error);
 
@@ -167,22 +239,11 @@ function Test() {
           >
             <SideNav
               isMobile={isMobile}
-              conversations={[
-                {
-                  id: '1',
-                  title: 'Example Conversation',
-                  timestamp: new Date(),
-                  preview: 'This is a sample conversation...'
-                }
-              ]}
-              currentConversationId="1"
-              onNewChat={() => {
-                console.log('New chat');
-                setMessages([]);
-              }}
-              onSelectConversation={(id: string) => console.log('Selected:', id)}
-              onDeleteConversation={(id: string) => console.log('Deleted:', id)}
-              onRenameConversation={(id: string, title: string) => console.log('Renamed:', id, title)}
+              currentConversationId={currentConversationId}
+              userId={userId}
+              onNewChat={startNewConversation}
+              onLoadConversation={loadConversation}
+              refreshTrigger={conversationRefreshTrigger}
             />
           </motion.div>
         )}
