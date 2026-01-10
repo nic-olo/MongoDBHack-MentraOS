@@ -157,14 +157,20 @@ export class DaemonClient extends EventEmitter {
   /**
    * Send agent status update
    */
-  async sendStatusUpdate(agentId: string, payload: StatusUpdatePayload): Promise<boolean> {
+  async sendStatusUpdate(
+    agentId: string,
+    payload: StatusUpdatePayload,
+  ): Promise<boolean> {
     return this.post(`/api/subagent/${agentId}/status`, payload);
   }
 
   /**
    * Send agent completion
    */
-  async sendComplete(agentId: string, payload: CompletePayload): Promise<boolean> {
+  async sendComplete(
+    agentId: string,
+    payload: CompletePayload,
+  ): Promise<boolean> {
     return this.post(`/api/subagent/${agentId}/complete`, payload);
   }
 
@@ -186,7 +192,7 @@ export class DaemonClient extends EventEmitter {
     const baseUrl = this.config.serverUrl;
     const wsProtocol = baseUrl.startsWith("https") ? "wss" : "ws";
     const host = baseUrl.replace(/^https?:\/\//, "");
-    return `${wsProtocol}://${host}/ws/daemon?token=${encodeURIComponent(this.config.token)}`;
+    return `${wsProtocol}://${host}/ws/daemon?email=${encodeURIComponent(this.config.email)}`;
   }
 
   /**
@@ -224,11 +230,11 @@ export class DaemonClient extends EventEmitter {
     this.reconnectAttempts++;
     const delay = Math.min(
       this.reconnectDelay * Math.pow(1.5, this.reconnectAttempts - 1),
-      this.maxReconnectDelay
+      this.maxReconnectDelay,
     );
 
     console.log(
-      `[client] Reconnecting in ${Math.round(delay / 1000)}s (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`
+      `[client] Reconnecting in ${Math.round(delay / 1000)}s (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
     );
 
     setTimeout(() => {
@@ -280,7 +286,9 @@ export class DaemonClient extends EventEmitter {
       });
 
       if (!response.ok) {
-        console.error(`[client] POST ${path} failed: ${response.status} ${response.statusText}`);
+        console.error(
+          `[client] POST ${path} failed: ${response.status} ${response.statusText}`,
+        );
         return false;
       }
 

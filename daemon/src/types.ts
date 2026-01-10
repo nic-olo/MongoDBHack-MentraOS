@@ -99,17 +99,22 @@ export interface LogPayload {
 // ============================================================================
 
 export type TerminalState =
-  | "initializing"      // Claude CLI is starting up
-  | "ready"             // Claude is waiting for input (haven't sent goal yet)
-  | "working"           // Claude is actively working
-  | "needs_approval"    // Claude is asking permission (y/n)
-  | "completed"         // Claude finished, back to idle prompt
-  | "error";            // Something went wrong
+  | "initializing" // Claude CLI is starting up
+  | "ready" // Claude is waiting for input (haven't sent goal yet)
+  | "working" // Claude is actively working
+  | "needs_approval" // Claude is asking permission (y/n)
+  | "completed" // Claude finished, back to idle prompt
+  | "error"; // Something went wrong
 
 export interface TerminalObservation {
   state: TerminalState;
   confidence: number;
-  action: "wait" | "send_approval" | "send_rejection" | "report_complete" | "report_error";
+  action:
+    | "wait"
+    | "send_approval"
+    | "send_rejection"
+    | "report_complete"
+    | "report_error";
   summary?: string;
   error?: string;
 }
@@ -119,7 +124,7 @@ export interface TerminalObservation {
 // ============================================================================
 
 export interface DaemonConfig {
-  token: string;
+  email: string;
   serverUrl: string;
   name?: string;
 }

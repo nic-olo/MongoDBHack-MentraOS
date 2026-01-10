@@ -5,7 +5,12 @@
 
 import { DaemonClient } from "./daemon-client";
 import { AgentPool, getAgentPool } from "./agent-pool";
-import { loadConfig, isConfigured, saveConfig, DEFAULT_SERVER_URL } from "./config";
+import {
+  loadConfig,
+  isConfigured,
+  saveConfig,
+  DEFAULT_SERVER_URL,
+} from "./config";
 import type {
   CloudCommand,
   SpawnAgentCommand,
@@ -14,6 +19,25 @@ import type {
   AgentStatus,
   LogPayload,
 } from "./types";
+
+/**
+ * Prompt user for input
+ */
+async function prompt(question: string): Promise<string> {
+  process.stdout.write(question);
+  for await (const line of console) {
+    return line.trim();
+  }
+  return "";
+}
+
+/**
+ * Validate email format
+ */
+function isValidEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+}
 
 class DesktopDaemon {
   private client: DaemonClient | null = null;
@@ -29,20 +53,25 @@ class DesktopDaemon {
    * Start the daemon
    */
   async start(): Promise<void> {
-    console.log("🚀 Desktop Daemon starting...");
+    console.log("🚀 Desktop Daemon starting...\n");
 
     // Load configuration
     this.config = loadConfig();
+
+    // If not configured, run setup
     if (!this.config) {
-      console.error("❌ Daemon not configured. Run with 'auth <token>' first.");
-      console.log("\nUsage:");
-      console.log("  bun run auth <token> [serverUrl]  - Authenticate daemon");
-      console.log("  bun run start                     - Start daemon");
+      console.log("📋 First time setup required.\n");
+      await this.runSetup();
+      this.config = loadConfig();
+    }
+
+    if (!this.config) {
+      console.error("❌ Setup failed. Please try again.");
       process.exit(1);
     }
 
+    console.log(`📧 Email: ${this.config.email}`);
     console.log(`📡 Server: ${this.config.serverUrl}`);
-    console.log(`🔑 Token: ${this.config.token.slice(0, 10)}...`);
 
     // Create client
     this.client = new DaemonClient({
@@ -66,7 +95,53 @@ class DesktopDaemon {
     process.on("SIGINT", () => this.shutdown());
     process.on("SIGTERM", () => this.shutdown());
 
-    console.log("✅ Daemon started. Waiting for commands...\n");
+    console.log("\n✅ Daemon started. Waiting for commands...\n");
+  }
+
+  /**
+   * Run interactive setup
+   */
+  private async runSetup(): Promise<void> {
+    console.log("Welcome to the MentraOS Desktop Daemon!\n");
+    console.log("This daemon connects your computer to MentraOS so AI agents");
+    console.log("can run coding tasks on your machine.\n");
+
+    // Get email
+    let email = "";
+    while (!email) {
+      email = await prompt("Enter your email address: ");
+      if (!isValidEmail(email)) {
+        console.log("❌ Invalid email format. Please try again.\n");
+        email = "";
+      }
+    }
+
+    // Get server URL (optional)
+    const serverUrlInput = await prompt(
+      `Server URL (press Enter for default: ${DEFAULT_SERVER_URL}): `,
+    );
+    const serverUrl = serverUrlInput || DEFAULT_SERVER_URL;
+
+    // Get device name (optional)
+    const hostname = require("os").hostname();
+    const nameInput = await prompt(
+      `Device name (press Enter for default: ${hostname}): `,
+    );
+    const name = nameInput || hostname;
+
+    // Save config
+    const config: DaemonConfig = {
+      email,
+      serverUrl,
+      name,
+    };
+
+    saveConfig(config);
+
+    console.log("\n✅ Setup complete!\n");
+    console.log(`   Email: ${email}`);
+    console.log(`   Server: ${serverUrl}`);
+    console.log(`   Device: ${name}\n`);
   }
 
   /**
@@ -97,7 +172,9 @@ class DesktopDaemon {
    * Handle spawn_agent command
    */
   private async handleSpawnAgent(command: SpawnAgentCommand): Promise<void> {
-    console.log(`🤖 Spawning agent ${command.agentId}: "${command.goal.slice(0, 50)}..."`);
+    console.log(
+      `🤖 Spawning agent ${command.agentId}: "${command.goal.slice(0, 50)}..."`,
+    );
 
     const result = await this.pool.spawn(command);
 
@@ -112,7 +189,9 @@ class DesktopDaemon {
     if (result.success) {
       console.log(`✅ Agent ${command.agentId} started`);
     } else {
-      console.error(`❌ Failed to start agent ${command.agentId}: ${result.error}`);
+      console.error(
+        `❌ Failed to start agent ${command.agentId}: ${result.error}`,
+      );
     }
   }
 
@@ -135,15 +214,20 @@ class DesktopDaemon {
    */
   private setupPoolEvents(): void {
     // Agent status changed
-    this.pool.on("agent:status", (agentId: string, status: AgentStatus, step?: string) => {
-      console.log(`📊 Agent ${agentId} status: ${status}${step ? ` - ${step}` : ""}`);
+    this.pool.on(
+      "agent:status",
+      (agentId: string, status: AgentStatus, step?: string) => {
+        console.log(
+          `📊 Agent ${agentId} status: ${status}${step ? ` - ${step}` : ""}`,
+        );
 
-      this.client?.sendStatusUpdate(agentId, {
-        status,
-        currentStep: step,
-        timestamp: Date.now(),
-      });
-    });
+        this.client?.sendStatusUpdate(agentId, {
+          status,
+          currentStep: step,
+          timestamp: Date.now(),
+        });
+      },
+    );
 
     // Agent completed
     this.pool.on("agent:complete", (agentId: string, result: any) => {
@@ -236,39 +320,39 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const command = args[0];
 
-  // Handle auth command
-  if (command === "auth") {
-    const token = args[1];
-    const serverUrl = args[2] || DEFAULT_SERVER_URL;
-
-    if (!token) {
-      console.error("Usage: bun run auth <token> [serverUrl]");
-      process.exit(1);
-    }
-
-    saveConfig({
-      token,
-      serverUrl,
-      name: `daemon-${Date.now()}`,
-    });
-
-    console.log("✅ Daemon authenticated successfully!");
-    console.log(`   Server: ${serverUrl}`);
-    console.log(`   Token: ${token.slice(0, 10)}...`);
-    console.log("\nRun 'bun run start' to start the daemon.");
+  // Handle reset command
+  if (command === "reset") {
+    const { clearConfig } = await import("./config");
+    clearConfig();
+    console.log(
+      "✅ Configuration cleared. Run 'bun run daemon' to set up again.",
+    );
     return;
   }
 
   // Handle status command
   if (command === "status") {
     if (!isConfigured()) {
-      console.log("❌ Daemon not configured. Run 'bun run auth <token>' first.");
+      console.log("❌ Daemon not configured. Run 'bun run daemon' to set up.");
     } else {
       const config = loadConfig()!;
       console.log("✅ Daemon is configured:");
+      console.log(`   Email: ${config.email}`);
       console.log(`   Server: ${config.serverUrl}`);
-      console.log(`   Token: ${config.token.slice(0, 10)}...`);
+      console.log(`   Device: ${config.name || "unknown"}`);
     }
+    return;
+  }
+
+  // Handle help command
+  if (command === "help" || command === "--help" || command === "-h") {
+    console.log("MentraOS Desktop Daemon\n");
+    console.log("Usage: bun run daemon [command]\n");
+    console.log("Commands:");
+    console.log("  (none)    Start the daemon (runs setup if needed)");
+    console.log("  status    Show current configuration");
+    console.log("  reset     Clear configuration and start fresh");
+    console.log("  help      Show this help message");
     return;
   }
 
