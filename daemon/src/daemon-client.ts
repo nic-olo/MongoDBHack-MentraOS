@@ -151,28 +151,34 @@ export class DaemonClient extends EventEmitter {
    * Send heartbeat to cloud
    */
   async sendHeartbeat(payload: HeartbeatPayload): Promise<boolean> {
-    return this.post("/api/daemon/heartbeat", payload);
+    return this.post("/daemon-api/daemon/heartbeat", payload);
   }
 
   /**
    * Send agent status update
    */
-  async sendStatusUpdate(agentId: string, payload: StatusUpdatePayload): Promise<boolean> {
-    return this.post(`/api/subagent/${agentId}/status`, payload);
+  async sendStatusUpdate(
+    agentId: string,
+    payload: StatusUpdatePayload,
+  ): Promise<boolean> {
+    return this.post(`/daemon-api/subagent/${agentId}/status`, payload);
   }
 
   /**
    * Send agent completion
    */
-  async sendComplete(agentId: string, payload: CompletePayload): Promise<boolean> {
-    return this.post(`/api/subagent/${agentId}/complete`, payload);
+  async sendComplete(
+    agentId: string,
+    payload: CompletePayload,
+  ): Promise<boolean> {
+    return this.post(`/daemon-api/subagent/${agentId}/complete`, payload);
   }
 
   /**
    * Send agent log
    */
   async sendLog(agentId: string, payload: LogPayload): Promise<boolean> {
-    return this.post(`/api/subagent/${agentId}/log`, payload);
+    return this.post(`/daemon-api/subagent/${agentId}/log`, payload);
   }
 
   // ===========================================================================
@@ -186,7 +192,7 @@ export class DaemonClient extends EventEmitter {
     const baseUrl = this.config.serverUrl;
     const wsProtocol = baseUrl.startsWith("https") ? "wss" : "ws";
     const host = baseUrl.replace(/^https?:\/\//, "");
-    return `${wsProtocol}://${host}/ws/daemon?token=${encodeURIComponent(this.config.token)}`;
+    return `${wsProtocol}://${host}/ws/daemon?email=${encodeURIComponent(this.config.email)}`;
   }
 
   /**
@@ -224,11 +230,11 @@ export class DaemonClient extends EventEmitter {
     this.reconnectAttempts++;
     const delay = Math.min(
       this.reconnectDelay * Math.pow(1.5, this.reconnectAttempts - 1),
-      this.maxReconnectDelay
+      this.maxReconnectDelay,
     );
 
     console.log(
-      `[client] Reconnecting in ${Math.round(delay / 1000)}s (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`
+      `[client] Reconnecting in ${Math.round(delay / 1000)}s (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
     );
 
     setTimeout(() => {
@@ -274,13 +280,15 @@ export class DaemonClient extends EventEmitter {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${this.config.token}`,
+          "X-Daemon-Email": this.config.email,
         },
         body: JSON.stringify(body),
       });
 
       if (!response.ok) {
-        console.error(`[client] POST ${path} failed: ${response.status} ${response.statusText}`);
+        console.error(
+          `[client] POST ${path} failed: ${response.status} ${response.statusText}`,
+        );
         return false;
       }
 
