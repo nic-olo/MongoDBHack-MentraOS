@@ -20,9 +20,7 @@
 
 import { AppServer, AppSession } from "@mentra/sdk";
 import { setupButtonHandler } from "./event/button";
-import { takePhoto } from "./modules/photo";
 import { setupWebviewRoutes, broadcastTranscriptionToClients, registerSession, unregisterSession, callMasterAgentFromVoice, pollAndSpeakResult } from "./routes/routes";
-import { playAudio, speak } from "./modules/audio";
 import { setupTranscription } from "./modules/transcription";
 import { createTranscriptionProcessor, TranscriptionProcessor } from "./handler/transcriptionProcessor";
 import { createGlassesDisplayManager, GlassesDisplayManager } from "./manager/glassesDisplayManager";
@@ -338,10 +336,7 @@ class ExampleMentraOSApp extends AppServer {
       console.log(`wTouch event: ${event.gesture_name}`);
     });
 
-    // Listen for button presses on the glasses
-    setupButtonHandler(session, userId, this.logger, (s, u) =>
-      takePhoto(s, u, this.logger, this.photosMap)
-    );
+
   }
 
   /**
