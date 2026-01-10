@@ -22,6 +22,7 @@
   "dependencies": {
     "@mentra/react": "^2.0.2",
     "@mentra/sdk": "2.1.29",
+    "dotenv": "^17.2.3",
     "ejs": "^3.1.10",
     "express": "^4.21.2",
     "http-proxy-middleware": "^3.0.5",
