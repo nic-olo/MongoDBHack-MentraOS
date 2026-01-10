@@ -117,9 +117,9 @@ class ExampleMentraOSApp extends AppServer {
     // Set up all web routes (pass our photos map)
     setupWebviewRoutes(this.getExpressApp(), this.photosMap);
 
-    // Set up daemon REST routes
-    this.getExpressApp().use("/api", createDaemonRoutes(daemonManager));
-    console.log("[Daemon] REST routes mounted at /api");
+    // Set up daemon REST routes (using /daemon-api to avoid MentraOS middleware)
+    this.getExpressApp().use("/daemon-api", createDaemonRoutes(daemonManager));
+    console.log("[Daemon] REST routes mounted at /daemon-api");
 
     // Check if we should use Vite dev server or serve built files
     const frontendDistPath = path.join(
