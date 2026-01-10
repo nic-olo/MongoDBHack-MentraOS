@@ -2,7 +2,7 @@ import { useState } from "react";
 import QueryPrompt from "../ui/query-prompt";
 import SideNav from "../ui/left-side-nav";
 import { isMobileDevice } from "../util/deviceDetection";
-import { queryMasterAgent } from "../api/masterAgent";
+import { queryMasterAgent, queryAgentStatus } from "../api/masterAgent";
 import AgentMessage from "../components/AgentMessage";
 
 interface Transcription {
@@ -45,28 +45,71 @@ function Test() {
 
     try {
       // TODO: Get actual userId from auth context (use useMentraAuth hook)
-      const result = await queryMasterAgent(
-        'user_123',
-        message,
-        (progressMessage) => {
-          console.log('Progress:', progressMessage);
+      const userId = 'user_123';
+      
+      // Check if the message contains the keyword "status"
+      const lowerMessage = message.toLowerCase();
+      const isStatusQuery = lowerMessage.includes('status');
+      
+      let result;
+      
+      if (isStatusQuery) {
+        // Extract the query part after "status"
+        const statusIndex = lowerMessage.indexOf('status');
+        const queryAfterStatus = message.substring(statusIndex + 6).trim(); // "status" is 6 chars
+        
+        // If there's a query after "status", use it; otherwise use the full message
+        const statusQuery = queryAfterStatus || message;
+        
+        console.log('🔍 Status query detected:', statusQuery);
+        
+        result = await queryAgentStatus(
+          userId,
+          statusQuery,
+          (progressMessage) => {
+            console.log('Status Progress:', progressMessage);
 
-          // Update the processing message with progress
-          setMessages(prev => {
-            const newMessages = [...prev];
-            const lastMessage = newMessages[newMessages.length - 1];
+            // Update the processing message with progress
+            setMessages(prev => {
+              const newMessages = [...prev];
+              const lastMessage = newMessages[newMessages.length - 1];
 
-            if (lastMessage && lastMessage.isProcessing) {
-              newMessages[newMessages.length - 1] = {
-                ...lastMessage,
-                progressMessage
-              };
-            }
+              if (lastMessage && lastMessage.isProcessing) {
+                newMessages[newMessages.length - 1] = {
+                  ...lastMessage,
+                  progressMessage
+                };
+              }
 
-            return newMessages;
-          });
-        }
-      );
+              return newMessages;
+            });
+          }
+        );
+      } else {
+        // Regular master agent query
+        result = await queryMasterAgent(
+          userId,
+          message,
+          (progressMessage) => {
+            console.log('Progress:', progressMessage);
+
+            // Update the processing message with progress
+            setMessages(prev => {
+              const newMessages = [...prev];
+              const lastMessage = newMessages[newMessages.length - 1];
+
+              if (lastMessage && lastMessage.isProcessing) {
+                newMessages[newMessages.length - 1] = {
+                  ...lastMessage,
+                  progressMessage
+                };
+              }
+
+              return newMessages;
+            });
+          }
+        );
+      }
 
       // Remove processing message and add actual response
       setMessages(prev => {
