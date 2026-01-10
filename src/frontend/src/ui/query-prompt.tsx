@@ -43,9 +43,9 @@ function QueryPrompt({
   };
 
   return (
-    <div className={`w-full ${isMobile ? 'p-4' : 'p-6'}`}>
+    <div className={`w-full ${isMobile ? 'p-4' : 'p-6'} font-mono`}>
       <div className="max-w-3xl mx-auto">
-        <div className="relative flex items-end gap-2 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
+        <div className="relative flex items-end gap-2 bg-white border-2 border-black rounded-2xl transition-all hover:border-black/80 shadow-lg">
           <textarea
             ref={textareaRef}
             value={message}
@@ -55,36 +55,36 @@ function QueryPrompt({
             disabled={disabled}
             rows={1}
             className={`
-              flex-1 resize-none bg-transparent px-4 py-3
-              focus:outline-none placeholder:text-gray-400
+              flex-1 resize-none bg-transparent px-3 py-2
+              focus:outline-none placeholder:text-black/40 text-black
               ${isMobile ? 'text-base' : 'text-sm'}
-              max-h-[200px] overflow-y-auto
+              max-h-[200px] overflow-y-auto font-mono
               disabled:opacity-50 disabled:cursor-not-allowed
             `}
-            style={{ minHeight: '44px' }}
+            style={{ minHeight: '36px' }}
           />
 
           <button
             onClick={handleSend}
             disabled={disabled || !message.trim()}
             className={`
-              flex items-center justify-center
-              ${isMobile ? 'w-10 h-10 m-2' : 'w-8 h-8 m-2.5'}
-              rounded-lg transition-all
+              flex items-center justify-center rounded-lg
+              ${isMobile ? 'w-8 h-8 m-1.5' : 'w-8 h-8 m-2'}
+              transition-all border-2
               ${
                 disabled || !message.trim()
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : 'bg-black text-white hover:bg-gray-800 active:scale-95'
+                  ? 'bg-black/10 text-black/40 border-black/10 cursor-not-allowed'
+                  : 'bg-black text-white border-black hover:bg-black/90 active:scale-95'
               }
             `}
           >
-            <Send className={isMobile ? 'w-5 h-5' : 'w-4 h-4'} />
+            <Send className={isMobile ? 'w-4 h-4' : 'w-4 h-4'} />
           </button>
         </div>
 
         {/* Optional hint text */}
-        <p className="text-xs text-gray-400 text-center mt-2">
-          Press Enter to send, Shift+Enter for new line
+        <p className="text-xs text-black/40 text-center mt-2 uppercase tracking-wide">
+          [ ENTER ] to send | [ SHIFT + ENTER ] for new line
         </p>
       </div>
     </div>
