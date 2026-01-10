@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Plus,
   MessageSquare,
@@ -9,44 +9,76 @@ import {
   Trash2,
   Edit3
 } from 'lucide-react';
-
-interface Conversation {
-  id: string;
-  title: string;
-  timestamp: Date;
-  preview?: string;
-}
+import { getConversations, deleteConversation, updateConversation, type ConversationListItem } from '../api/conversations';
 
 interface SideNavProps {
   isMobile: boolean;
-  conversations?: Conversation[];
-  currentConversationId?: string;
+  currentConversationId?: string | null;
+  userId: string;
   onNewChat?: () => void;
-  onSelectConversation?: (id: string) => void;
-  onDeleteConversation?: (id: string) => void;
-  onRenameConversation?: (id: string, newTitle: string) => void;
+  onLoadConversation?: (id: string) => void;
+  refreshTrigger?: number; // Timestamp to trigger refresh
 }
 
 function SideNav({
   isMobile,
-  conversations = [],
   currentConversationId,
+  userId,
   onNewChat,
-  onSelectConversation,
-  onDeleteConversation,
-  onRenameConversation
+  onLoadConversation,
+  refreshTrigger
 }: SideNavProps) {
+  const [conversations, setConversations] = useState<ConversationListItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
 
+  // Memoize loadConversations to avoid useEffect dependency warnings
+  const loadConversations = useCallback(async () => {
+    try {
+      setLoading(true);
+      const convs = await getConversations(userId);
+      setConversations(convs);
+    } catch (error) {
+      console.error('Failed to load conversations:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [userId]);
+
+  // Load conversations on mount, when userId changes, or when refresh is triggered
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations, refreshTrigger]);
+
+  const handleDeleteConversation = async (id: string) => {
+    try {
+      await deleteConversation(id);
+      setConversations(prev => prev.filter(c => c.id !== id));
+    } catch (error) {
+      console.error('Failed to delete conversation:', error);
+    }
+  };
+
+  const handleRenameConversation = async (id: string, newTitle: string) => {
+    try {
+      await updateConversation(id, newTitle);
+      setConversations(prev =>
+        prev.map(c => c.id === id ? { ...c, title: newTitle } : c)
+      );
+    } catch (error) {
+      console.error('Failed to rename conversation:', error);
+    }
+  };
+
   const filteredConversations = conversations.filter(conv =>
     conv.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const groupConversationsByDate = (convs: Conversation[]) => {
+  const groupConversationsByDate = (convs: ConversationListItem[]) => {
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
@@ -54,14 +86,15 @@ function SideNav({
     lastWeek.setDate(lastWeek.getDate() - 7);
 
     return {
-      today: convs.filter(c => isSameDay(c.timestamp, today)),
-      yesterday: convs.filter(c => isSameDay(c.timestamp, yesterday)),
-      lastWeek: convs.filter(c =>
-        c.timestamp > lastWeek &&
-        !isSameDay(c.timestamp, today) &&
-        !isSameDay(c.timestamp, yesterday)
-      ),
-      older: convs.filter(c => c.timestamp <= lastWeek)
+      today: convs.filter(c => isSameDay(new Date(c.updatedAt), today)),
+      yesterday: convs.filter(c => isSameDay(new Date(c.updatedAt), yesterday)),
+      lastWeek: convs.filter(c => {
+        const date = new Date(c.updatedAt);
+        return date > lastWeek &&
+          !isSameDay(date, today) &&
+          !isSameDay(date, yesterday);
+      }),
+      older: convs.filter(c => new Date(c.updatedAt) <= lastWeek)
     };
   };
 
@@ -76,13 +109,13 @@ function SideNav({
 
   const handleSaveEdit = (id: string) => {
     if (editTitle.trim()) {
-      onRenameConversation?.(id, editTitle.trim());
+      handleRenameConversation(id, editTitle.trim());
     }
     setEditingId(null);
     setEditTitle('');
   };
 
-  const renderConversation = (conv: Conversation) => {
+  const renderConversation = (conv: ConversationListItem) => {
     const isActive = conv.id === currentConversationId;
     const isHovered = hoveredId === conv.id;
     const isEditing = editingId === conv.id;
@@ -119,12 +152,12 @@ function SideNav({
             <MessageSquare className="w-4 h-4 shrink-0" />
             <div
               className="flex-1 min-w-0"
-              onClick={() => onSelectConversation?.(conv.id)}
+              onClick={() => {
+                onLoadConversation?.(conv.id);
+                if (isMobile) setIsOpen(false);
+              }}
             >
               <p className="text-sm font-medium truncate">{conv.title}</p>
-              {conv.preview && (
-                <p className="text-xs text-gray-500 truncate">{conv.preview}</p>
-              )}
             </div>
 
             {/* Action buttons - show on hover */}
@@ -143,7 +176,9 @@ function SideNav({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    onDeleteConversation?.(conv.id);
+                    if (confirm('Delete this conversation?')) {
+                      handleDeleteConversation(conv.id);
+                    }
                   }}
                   className="p-1 hover:bg-red-100 hover:text-red-600 rounded transition-colors"
                   title="Delete"
@@ -230,6 +265,7 @@ function SideNav({
         <button
           onClick={() => {
             onNewChat?.();
+            loadConversations(); // Refresh conversation history
             if (isMobile) setIsOpen(false);
           }}
           className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-black text-white rounded-lg hover:bg-gray-800 active:scale-95 transition-all"
@@ -255,7 +291,12 @@ function SideNav({
 
       {/* Conversations List */}
       <div className="flex-1 overflow-y-auto px-3">
-        {filteredConversations.length === 0 ? (
+        {loading ? (
+          <div className="flex flex-col items-center justify-center h-full text-center text-gray-400 px-4">
+            <MessageSquare className="w-12 h-12 mb-3 opacity-50 animate-pulse" />
+            <p className="text-sm">Loading conversations...</p>
+          </div>
+        ) : filteredConversations.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center text-gray-400 px-4">
             <MessageSquare className="w-12 h-12 mb-3 opacity-50" />
             <p className="text-sm">

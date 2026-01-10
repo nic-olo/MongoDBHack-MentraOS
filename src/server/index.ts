@@ -18,6 +18,9 @@
  * =============================================================================
  */
 
+// Load environment variables from .env file
+import 'dotenv/config';
+
 import { AppServer, AppSession } from "@mentra/sdk";
 import { setupButtonHandler } from "./event/button";
 import {
@@ -42,6 +45,7 @@ import { getDaemonManager, createDaemonRoutes } from "./daemon";
 import { WebSocketServer } from "ws";
 import * as path from "path";
 import * as http from "http";
+import { initializeDatabase } from "./db/connection";
 
 interface StoredPhoto {
   requestId: string;
@@ -447,6 +451,11 @@ class ExampleMentraOSApp extends AppServer {
 // START THE SERVER
 
 const app = new ExampleMentraOSApp();
+
+// Initialize MongoDB connection
+initializeDatabase().catch((error) => {
+  console.error('[MongoDB] Failed to initialize:', error);
+});
 
 app
   .start()

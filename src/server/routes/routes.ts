@@ -23,6 +23,7 @@
  */
 
 import { Express, Response } from 'express';
+import { setupConversationRoutes } from './conversation.routes.js';
 
 // Store SSE clients with userId mapping
 interface SSEClient {
@@ -126,6 +127,9 @@ export function setupWebviewRoutes(
   app: Express,
   photosMap: Map<string, StoredPhoto>
 ): void {
+
+  // Setup conversation history routes
+  setupConversationRoutes(app);
 
   // SSE Route: Real-time photo stream
   app.get('/api/photo-stream', (req: any, res: any) => {
