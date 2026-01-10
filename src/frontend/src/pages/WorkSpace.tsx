@@ -3,6 +3,7 @@ import QueryPrompt from "../ui/query-prompt";
 import SideNav from "../ui/left-side-nav";
 import { isMobileDevice } from "../util/deviceDetection";
 import { queryMasterAgent } from "../api/masterAgent";
+import AgentMessage from "../components/AgentMessage";
 
 interface Transcription {
   text: string;
@@ -17,10 +18,16 @@ function Test() {
   const isMobile = isMobileDevice();
 
   // Chat state management
-  const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant', content: string }>>([]);
+  const [messages, setMessages] = useState<Array<{
+    role: 'user' | 'assistant',
+    content: string,
+    isProcessing?: boolean,
+    progressMessage?: string
+  }>>([]);
   const [transcriptions] = useState<Transcription[]>([]);
 
   const hasMessages = messages.length > 0;
+  const isAgentRunning = messages.length > 0 && messages[messages.length - 1]?.isProcessing;
 
   const handleSendMessage = async (message: string) => {
     console.log('Sent:', message);
@@ -31,7 +38,9 @@ function Test() {
     // Add processing message
     setMessages(prev => [...prev, {
       role: 'assistant',
-      content: 'Processing your query...'
+      content: 'Initializing...',
+      isProcessing: true,
+      progressMessage: 'Preparing your request...'
     }]);
 
     try {
@@ -41,7 +50,21 @@ function Test() {
         message,
         (progressMessage) => {
           console.log('Progress:', progressMessage);
-          // Optionally update the processing message
+
+          // Update the processing message with progress
+          setMessages(prev => {
+            const newMessages = [...prev];
+            const lastMessage = newMessages[newMessages.length - 1];
+
+            if (lastMessage && lastMessage.isProcessing) {
+              newMessages[newMessages.length - 1] = {
+                ...lastMessage,
+                progressMessage
+              };
+            }
+
+            return newMessages;
+          });
         }
       );
 
@@ -52,17 +75,20 @@ function Test() {
         if (result.status === 'completed' && result.result) {
           return [...withoutProcessing, {
             role: 'assistant',
-            content: result.result.synthesis
+            content: result.result.synthesis,
+            isProcessing: false
           }];
         } else if (result.status === 'failed') {
           return [...withoutProcessing, {
             role: 'assistant',
-            content: `Error: ${result.error || 'Task failed'}`
+            content: `Error: ${result.error || 'Task failed'}`,
+            isProcessing: false
           }];
         } else {
           return [...withoutProcessing, {
             role: 'assistant',
-            content: 'Task did not complete successfully'
+            content: 'Task did not complete successfully',
+            isProcessing: false
           }];
         }
       });
@@ -76,7 +102,8 @@ function Test() {
         const withoutProcessing = prev.slice(0, -1);
         return [...withoutProcessing, {
           role: 'assistant',
-          content: `Sorry, I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}`
+          content: `Sorry, I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          isProcessing: false
         }];
       });
     }
@@ -132,6 +159,32 @@ function Test() {
         ) : (
           /* Desktop with messages OR Mobile (always this layout) */
           <>
+            {/* Async Session Running Indicator */}
+            {isAgentRunning && (
+              <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-3 border-b border-blue-700">
+                <div className="max-w-3xl mx-auto flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="relative">
+                      <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                      <div className="absolute inset-0 w-2 h-2 bg-white rounded-full animate-ping"></div>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold">Async Agent Session Running</p>
+                      <p className="text-xs text-blue-100">
+                        {messages[messages.length - 1]?.progressMessage || 'Processing your request...'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Chat Messages Area */}
             <div className="flex-1 overflow-y-auto p-6">
               <div className="max-w-3xl mx-auto">
@@ -158,109 +211,11 @@ function Test() {
                             </div>
                           </div>
                         ) : (
-                          <div className="space-y-4">
-                            {/* Coding in Progress State */}
-                            <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-6 border border-gray-200 shadow-sm">
-                              {/* Header */}
-                              <div className="flex items-center gap-3 mb-4">
-                                <div className="relative">
-                                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-                                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                                    </svg>
-                                  </div>
-                                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white animate-pulse" />
-                                </div>
-                                <div>
-                                  <h3 className="text-lg font-semibold text-gray-800">Working on your request...</h3>
-                                  <p className="text-sm text-gray-500">AI is coding right now</p>
-                                </div>
-                              </div>
-
-                              {/* Progress Steps */}
-                              <div className="space-y-3 mt-4">
-                                <div className="flex items-start gap-3 p-3 bg-white rounded-lg border border-gray-200">
-                                  <div className="mt-1">
-                                    <svg className="w-5 h-5 text-blue-500 animate-spin" fill="none" viewBox="0 0 24 24">
-                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
-                                  </div>
-                                  <div className="flex-1">
-                                    <p className="text-sm font-medium text-gray-700">Analyzing your requirements</p>
-                                    <p className="text-xs text-gray-500 mt-1">Understanding the task and planning the implementation</p>
-                                  </div>
-                                </div>
-
-                                <div className="flex items-start gap-3 p-3 bg-white rounded-lg border border-gray-200 opacity-60">
-                                  <div className="mt-1">
-                                    <div className="w-5 h-5 rounded-full border-2 border-gray-300"></div>
-                                  </div>
-                                  <div className="flex-1">
-                                    <p className="text-sm font-medium text-gray-700">Writing the code</p>
-                                    <p className="text-xs text-gray-500 mt-1">Creating optimized and clean code for your solution</p>
-                                  </div>
-                                </div>
-
-                                <div className="flex items-start gap-3 p-3 bg-white rounded-lg border border-gray-200 opacity-40">
-                                  <div className="mt-1">
-                                    <div className="w-5 h-5 rounded-full border-2 border-gray-300"></div>
-                                  </div>
-                                  <div className="flex-1">
-                                    <p className="text-sm font-medium text-gray-700">Testing & validation</p>
-                                    <p className="text-xs text-gray-500 mt-1">Ensuring everything works perfectly</p>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Code Preview (Optional) */}
-                              <div className="mt-4 p-4 bg-gray-900 rounded-lg overflow-hidden">
-                                <div className="flex items-center gap-2 mb-3">
-                                  <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                                  <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                                  <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                                  <span className="ml-2 text-xs text-gray-400">workspace.tsx</span>
-                                </div>
-                                <div className="space-y-2 font-mono text-sm">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-gray-500">1</span>
-                                    <span className="text-purple-400">import</span>
-                                    <span className="text-gray-300">&#123; useState &#125;</span>
-                                    <span className="text-purple-400">from</span>
-                                    <span className="text-green-400">"react"</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-gray-500">2</span>
-                                    <span className="text-gray-500">//</span>
-                                    <span className="text-gray-500 animate-pulse">Generating code...</span>
-                                  </div>
-                                  <div className="flex items-center gap-2 opacity-50">
-                                    <span className="text-gray-500">3</span>
-                                    <span className="text-blue-400">const</span>
-                                    <span className="text-gray-300">handleRequest</span>
-                                    <span className="text-purple-400">=</span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Instruction/Info Box */}
-                              <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                                <div className="flex items-start gap-3">
-                                  <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                                  </svg>
-                                  <div className="flex-1">
-                                    <h4 className="text-sm font-semibold text-blue-900 mb-1">What's happening?</h4>
-                                    <p className="text-xs text-blue-700 leading-relaxed">
-                                      The AI is analyzing your request, exploring the codebase, and writing optimized code.
-                                      This process ensures high-quality results tailored to your project structure.
-                                      You'll see the complete implementation once it's ready.
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
+                          <AgentMessage
+                            content={msg.content}
+                            isProcessing={msg.isProcessing}
+                            progressMessage={msg.progressMessage}
+                          />
                         )}
                       </div>
                     ))}
