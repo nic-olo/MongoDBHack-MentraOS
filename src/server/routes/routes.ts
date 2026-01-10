@@ -23,7 +23,6 @@
  */
 
 import { Express, Response } from 'express';
-import { getThemePreference, setThemePreference } from '../modules/simple-storage';
 
 // Store SSE clients with userId mapping
 interface SSEClient {
@@ -314,70 +313,10 @@ export function setupWebviewRoutes(
     }
   });
 
-  // Route: Get theme preference from Simple Storage
-  app.get('/api/theme-preference', async (req: any, res: any) => {
-    try {
-      const userId = req.query.userId as string;
 
-      if (!userId) {
-        res.status(400).json({ error: 'userId is required' });
-        return;
-      }
-
-      // Get the session for this specific user
-      const session = activeSessions.get(userId);
-
-      if (!session) {
-        res.status(404).json({ error: `No active session for user ${userId}` });
-        return;
-      }
-
-      console.log(`[Theme] Getting theme preference for user: ${userId}`);
-
-      // Get theme preference from Simple Storage
-      const theme = await getThemePreference(session, userId);
-
-      res.json({ theme, userId });
-    } catch (error: any) {
-      console.error('Error getting theme preference:', error);
-      res.status(500).json({ error: error.message });
-    }
-  });
 
   // Route: Set theme preference in Simple Storage
-  app.post('/api/theme-preference', async (req: any, res: any) => {
-    try {
-      const { userId, theme } = req.body;
 
-      if (!userId) {
-        res.status(400).json({ error: 'userId is required' });
-        return;
-      }
-
-      if (!theme || (theme !== 'dark' && theme !== 'light')) {
-        res.status(400).json({ error: 'theme must be "dark" or "light"' });
-        return;
-      }
-
-      // Get the session for this specific user
-      const session = activeSessions.get(userId);
-
-      if (!session) {
-        res.status(404).json({ error: `No active session for user ${userId}` });
-        return;
-      }
-
-      console.log(`[Theme] Setting theme preference for user ${userId}: ${theme}`);
-
-      // Set theme preference in Simple Storage
-      await setThemePreference(session, userId, theme);
-
-      res.json({ success: true, theme, userId });
-    } catch (error: any) {
-      console.error('Error setting theme preference:', error);
-      res.status(500).json({ error: error.message });
-    }
-  });
 
   // Route 1: Get the latest photo metadata for a specific user
   app.get('/api/latest-photo', (req: any, res: any) => {
