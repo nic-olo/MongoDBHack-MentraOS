@@ -31,6 +31,7 @@ import type {
   CompletePayload,
   LogPayload,
 } from "./types";
+import { getDb, isConnected } from "../db/mongo";
 
 /**
  * Middleware to authenticate daemon requests
@@ -79,7 +80,112 @@ function authMiddleware(daemonManager: DaemonManager) {
 export function createDaemonRoutes(daemonManager: DaemonManager): Router {
   const router = Router();
 
-  // Apply auth middleware to all routes
+  // ===========================================================================
+  // Test Endpoints (no auth required) - MUST be before auth middleware
+  // ===========================================================================
+
+  /**
+   * POST /test/spawn
+   * Test endpoint to spawn an agent on a connected daemon
+   * Body: { email: string, goal: string, workingDirectory?: string }
+   */
+  router.post("/test/spawn", async (req: Request, res: Response) => {
+    const { email, goal, workingDirectory } = req.body;
+
+    if (!email || !goal) {
+      return res.status(400).json({ error: "email and goal are required" });
+    }
+
+    // Find daemon for this user
+    const daemon = daemonManager.getOnlineDaemonForUser(email);
+    if (!daemon) {
+      return res.status(404).json({
+        error: "No online daemon found for this user",
+        email,
+        hint: "Make sure the daemon is running with: bun run daemon",
+      });
+    }
+
+    // Spawn agent
+    const agentId = await daemonManager.spawnAgent(daemon.daemonId, {
+      agentType: "terminal",
+      goal,
+      workingDirectory: workingDirectory || process.cwd(),
+      sessionId: `test_${Date.now()}`,
+    });
+
+    if (!agentId) {
+      return res.status(500).json({ error: "Failed to spawn agent" });
+    }
+
+    return res.json({
+      success: true,
+      agentId,
+      daemonId: daemon.daemonId,
+      message: "Agent spawned. Poll /test/agent/:id for status.",
+    });
+  });
+
+  /**
+   * GET /test/agent/:id
+   * Get agent status (from memory and MongoDB)
+   */
+  router.get("/test/agent/:id", async (req: Request, res: Response) => {
+    const { id } = req.params;
+
+    // Check in-memory first
+    const memAgent = daemonManager.getAgent(id);
+
+    // Check MongoDB if connected
+    let dbAgent = null;
+    if (isConnected()) {
+      try {
+        const db = getDb();
+        dbAgent = await db.collection("subagents").findOne({ agentId: id });
+      } catch (error) {
+        console.error("[test/agent] MongoDB error:", error);
+      }
+    }
+
+    if (!memAgent && !dbAgent) {
+      return res.status(404).json({ error: "Agent not found" });
+    }
+
+    return res.json({
+      memory: memAgent || null,
+      database: dbAgent || null,
+    });
+  });
+
+  /**
+   * GET /test/daemons
+   * List all connected daemons (for debugging)
+   */
+  router.get("/test/daemons", (req: Request, res: Response) => {
+    const daemons: any[] = [];
+
+    // Use the manager's methods to get daemon info
+    // This is a bit hacky but works for testing
+    const testEmails = ["isaiahballah@gmail.com", "test@example.com"];
+    for (const email of testEmails) {
+      const daemon = daemonManager.getOnlineDaemonForUser(email);
+      if (daemon) {
+        daemons.push(daemon);
+      }
+    }
+
+    return res.json({
+      count: daemons.length,
+      daemons,
+      hint: "Use POST /test/spawn with an email to spawn an agent",
+    });
+  });
+
+  // ===========================================================================
+  // Authenticated Endpoints (auth required)
+  // ===========================================================================
+
+  // Apply auth middleware to routes below
   router.use(authMiddleware(daemonManager));
 
   /**

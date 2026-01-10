@@ -39,6 +39,7 @@ import {
 } from "./manager/glassesDisplayManager";
 import { TRANSCRIPTION_CONFIG } from "./const/wakeWords";
 import { getDaemonManager, createDaemonRoutes } from "./daemon";
+import { connectMongo } from "./db/mongo";
 import { WebSocketServer } from "ws";
 import * as path from "path";
 import * as http from "http";
@@ -447,8 +448,9 @@ class ExampleMentraOSApp extends AppServer {
 
 const app = new ExampleMentraOSApp();
 
-app
-  .start()
+// Connect to MongoDB first, then start the server
+connectMongo()
+  .then(() => app.start())
   .then(() => {
     // Set up WebSocket server for daemon connections
     // We need to create a separate HTTP server for WebSocket since MentraOS SDK manages its own
