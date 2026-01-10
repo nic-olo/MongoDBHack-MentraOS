@@ -123,8 +123,8 @@ export class MockAgentSimulator {
 
       await this.sleep(1500);
 
-      // Should be killed around 85% deviation
-      if (step.deviation > this.config.baseUrl.includes('75') ? 75 : 80) {
+      // Should be killed around 75-85% deviation
+      if (step.deviation > 75) {
         console.log(`💀 Agent should be killed soon (deviation: ${step.deviation}%)`);
       }
     }
@@ -287,7 +287,7 @@ async function spawnAgent(baseUrl: string, type: string, query: string): Promise
       throw new Error(`Failed to spawn agent: ${response.status}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as { agent_id: string };
     console.log(`✓ Spawned ${type} agent: ${data.agent_id}`);
     return data.agent_id;
   } catch (error) {
