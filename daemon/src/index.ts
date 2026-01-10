@@ -3,6 +3,7 @@
  * Connects to cloud backend, receives commands, manages local agents
  */
 
+import * as readline from "readline";
 import { DaemonClient } from "./daemon-client";
 import { AgentPool, getAgentPool } from "./agent-pool";
 import {
@@ -21,14 +22,20 @@ import type {
 } from "./types";
 
 /**
- * Prompt user for input
+ * Prompt user for input using readline
  */
 async function prompt(question: string): Promise<string> {
-  process.stdout.write(question);
-  for await (const line of console) {
-    return line.trim();
-  }
-  return "";
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer.trim());
+    });
+  });
 }
 
 /**
