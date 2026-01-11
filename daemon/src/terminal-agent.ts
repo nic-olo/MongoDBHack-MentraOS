@@ -204,11 +204,16 @@ export class TerminalAgent extends EventEmitter {
       }
 
       if (observation.state === "error") {
-        throw new Error(`Claude CLI failed to start: ${observation.error || "Unknown error"}`);
+        throw new Error(
+          `Claude CLI failed to start: ${observation.error || "Unknown error"}`,
+        );
       }
 
       // Still initializing, continue waiting
-      this.updateStatus("initializing", `Waiting for Claude... (${Math.floor(elapsed / 1000)}s)`);
+      this.updateStatus(
+        "initializing",
+        `Waiting for Claude... (${Math.floor(elapsed / 1000)}s)`,
+      );
     }
 
     throw new Error("Timeout waiting for Claude CLI to start");
@@ -262,7 +267,11 @@ export class TerminalAgent extends EventEmitter {
       // Handle based on action
       switch (observation.action) {
         case "wait":
-          this.updateStatus("running", observation.summary || `Working... (${Math.floor(elapsed / 1000)}s)`);
+          this.updateStatus(
+            "running",
+            observation.summary ||
+              `Working... (${Math.floor(elapsed / 1000)}s)`,
+          );
           break;
 
         case "send_approval":
@@ -271,7 +280,10 @@ export class TerminalAgent extends EventEmitter {
             this.write("y\r");
             await this.sleep(500);
           } else {
-            this.updateStatus("needs_approval", observation.summary || "Claude needs approval");
+            this.updateStatus(
+              "needs_approval",
+              observation.summary || "Claude needs approval",
+            );
             // In non-auto mode, we'd wait for external approval signal
             // For now, just auto-approve anyway
             this.write("y\r");
@@ -289,8 +301,14 @@ export class TerminalAgent extends EventEmitter {
           return this.createResult("completed", undefined, observation.summary);
 
         case "report_error":
-          this.log("status", `Claude encountered an error: ${observation.error}`);
-          return this.createResult("failed", observation.error || "Unknown error");
+          this.log(
+            "status",
+            `Claude encountered an error: ${observation.error}`,
+          );
+          return this.createResult(
+            "failed",
+            observation.error || "Unknown error",
+          );
       }
 
       // Track activity (check if buffer is growing)
@@ -300,7 +318,10 @@ export class TerminalAgent extends EventEmitter {
         // If no activity for 30 seconds after goal submission, check if complete
         if (noActivityCount > 15 && this.goalSubmitted) {
           const finalCheck = await this.observer.observe(this.getBuffer());
-          if (finalCheck.state === "completed" || finalCheck.state === "ready") {
+          if (
+            finalCheck.state === "completed" ||
+            finalCheck.state === "ready"
+          ) {
             this.log("status", "No activity detected, assuming complete");
             return this.createResult("completed");
           }
@@ -321,7 +342,7 @@ export class TerminalAgent extends EventEmitter {
   private createResult(
     status: "completed" | "failed",
     error?: string,
-    summary?: string
+    summary?: string,
   ): AgentResult {
     const buffer = this.getBuffer();
 
@@ -385,29 +406,44 @@ export class TerminalAgent extends EventEmitter {
 
   /**
    * Cleanup resources
+   * Force kills the PTY process to prevent hanging
    */
   private cleanup(): void {
     this.isRunning = false;
 
-    if (this.session?.proc.terminal) {
-      // Send exit command
+    if (this.session?.proc) {
+      const proc = this.session.proc;
+
+      // Send exit command first
       try {
         this.write("exit\r");
       } catch {
         // Ignore errors during cleanup
       }
 
-      // Close terminal
+      // Force kill after 1 second if still running
       setTimeout(() => {
         try {
-          this.session?.proc.terminal?.close();
+          proc.kill();
         } catch {
           // Ignore
         }
-      }, 500);
+      }, 1000);
+
+      // Close terminal after 2 seconds
+      setTimeout(() => {
+        try {
+          proc.terminal?.close();
+        } catch {
+          // Ignore
+        }
+      }, 2000);
     }
 
-    this.session = null;
+    // Clear session reference after cleanup timers are set
+    setTimeout(() => {
+      this.session = null;
+    }, 2500);
   }
 
   /**
@@ -422,7 +458,7 @@ export class TerminalAgent extends EventEmitter {
  * Factory function to create and start a terminal agent
  */
 export async function runTerminalAgent(
-  options: TerminalAgentOptions
+  options: TerminalAgentOptions,
 ): Promise<AgentResult> {
   const agent = new TerminalAgent(options);
   return agent.start();

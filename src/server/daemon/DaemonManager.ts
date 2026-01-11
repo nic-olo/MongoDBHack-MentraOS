@@ -479,17 +479,17 @@ export class DaemonManager extends EventEmitter {
     if (isConnected()) {
       try {
         const db = getDb();
-        await db.collection("subagents").updateOne(
-          { agentId },
-          {
-            $set: {
-              status: payload.status,
-              currentStep: payload.currentStep,
-              updatedAt: new Date(),
-            },
-            $push: payload.currentStep ? { notes: payload.currentStep } : {},
+        const updateDoc: any = {
+          $set: {
+            status: payload.status,
+            currentStep: payload.currentStep,
+            updatedAt: new Date(),
           },
-        );
+        };
+        if (payload.currentStep) {
+          updateDoc.$push = { notes: payload.currentStep };
+        }
+        await db.collection("subagents").updateOne({ agentId }, updateDoc);
       } catch (error) {
         console.error(
           "[DaemonManager] Failed to update agent status in MongoDB:",

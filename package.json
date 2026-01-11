@@ -20,11 +20,13 @@
   "license": "ISC",
   "description": "Example app for taking photos with MentraOS",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.35.0",
     "@mentra/react": "^2.0.2",
     "@mentra/sdk": "2.1.29",
     "ejs": "^3.1.10",
     "express": "^4.21.2",
     "http-proxy-middleware": "^3.0.5",
+    "mongodb": "^6.12.0",
     "mongoose": "^9.0.2",
     "ws": "^8.18.1"
   },

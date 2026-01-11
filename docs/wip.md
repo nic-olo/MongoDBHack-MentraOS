@@ -1,50 +1,103 @@
-# Work In Progress - Current State
+# Work In Progress - Implementation Status
 
-## What's Working NOW (Tested End-to-End)
+## Current State (Updated after MasterAgent implementation)
 
-1. **MongoDB Connection** - Connected to Atlas, indexes created
-2. **DaemonManager persists to MongoDB** - Agent state saved/updated
-3. **Daemon connects via WebSocket** - Using email for auth
-4. **Test endpoint spawns agents** - `POST /daemon-api/test/spawn`
-5. **TerminalAgent runs Claude CLI** - LLM observer detects states
-6. **Status updates flow** - Daemon → Server → MongoDB
+### ✅ Phase 1: Infrastructure (COMPLETE)
 
-### Successful Test
+| Component | Status | Notes |
+|-----------|--------|-------|
+| MongoDB Connection | ✅ Done | `src/server/db/mongo.ts` with indexes |
+| DaemonManager | ✅ Done | WebSocket + REST, persists to MongoDB |
+| Test Endpoints | ✅ Done | `/daemon-api/test/spawn`, `/test/agent/:id` |
+| Desktop Daemon | ✅ Done | `daemon/src/` |
+| TerminalAgent | ✅ Done | Claude CLI in PTY, improved cleanup |
+| LLM Observer | ✅ Done | Gemini Flash for state detection |
+| Daemon ↔ Server | ✅ Done | WebSocket commands, REST updates |
 
-```bash
-# Spawn agent
-curl -X POST http://localhost:3001/daemon-api/test/spawn \
-  -H "Content-Type: application/json" \
-  -d '{"email": "isaiahballah@gmail.com", "goal": "What is 2+2?"}'
+### ✅ Phase 2: MasterAgent Refactor (COMPLETE)
 
-# Poll status
-curl http://localhost:3001/daemon-api/test/agent/AGENT_ID
-```
+| Component | Status | Location |
+|-----------|--------|----------|
+| ConversationService | ✅ Done | `src/server/conversation/` |
+| MasterAgent (new) | ✅ Done | `src/server/master-agent/` |
+| MasterAgentTools | ✅ Done | Sandboxed tools for user data |
+| Model Config | ✅ Done | Haiku 4.5 / Sonnet 4.5 |
+| Updated Routes | ✅ Done | Direct calls, no proxy |
 
-Result: Completed in ~5 seconds, status persisted to MongoDB
+### 🔄 Phase 3: Cleanup & Testing (IN PROGRESS)
+
+| Task | Status | Notes |
+|------|--------|-------|
+| Delete old `src/master-agent/` | ❌ TODO | Keep as reference for now |
+| Test end-to-end flow | ❌ TODO | Need to run full test |
+| Update frontend polling | ❌ TODO | Use new response format |
+| Install dependencies | ✅ Done | `bun install` completed |
 
 ---
 
-## What's NOT Done Yet
+## What Was Implemented
 
-### Step 4: Move MasterAgent to Main Server
-- Move `src/master-agent/src/` → `src/server/master-agent/`
-- Remove separate Express server
-- Keep MasterAgent class and sub-agents
+### 1. ConversationService (`src/server/conversation/`)
 
-### Step 5: Add Terminal Sub-Agent
-- Create `src/server/master-agent/sub-agents/terminal-agent.ts`
-- Calls `daemonManager.spawnAgent()`
-- Uses `daemonManager.waitForCompletion()` to poll
+- **ConversationService.ts** - Manages conversation history per user
+  - `getOrCreateConversation(userId)` - Get active or create new conversation
+  - `addTurn(conversationId, options)` - Add user/assistant turns
+  - `getHistoryForPrompt(conversation)` - Format history for Claude
+  - Auto-expires after 4 hours of inactivity
+  - Keeps last 20 turns (MAX_TURNS)
 
-### Step 6: Update Routes (Remove Proxy)
-- `POST /api/master-agent/query` should call MasterAgent directly
-- Store tasks in MongoDB (not separate server memory)
-- Remove `MASTER_AGENT_URL` proxy code
+- **types.ts** - Type definitions for conversations
+  - `Conversation`, `ConversationTurn`, `AddTurnOptions`
+  - Configuration constants
 
-### Step 7: Fix TerminalAgent Cleanup
-- Force kill PTY after completion
-- Prevent process hanging
+### 2. MasterAgent (`src/server/master-agent/`)
+
+- **MasterAgent.ts** - Main orchestrator with:
+  - Decision flow: `direct_response` / `clarifying_question` / `spawn_agent`
+  - Tool use loop with Anthropic API
+  - Dual output: `glassesDisplay` (short) + `webviewContent` (full)
+  - Models: Haiku 4.5 (fast decisions), Sonnet 4.5 (synthesis)
+  - Background processing (non-blocking)
+
+- **MasterAgentTools.ts** - Sandboxed tools:
+  - `get_recent_tasks` - User's recent tasks
+  - `get_running_agents` - Active terminal agents
+  - `get_agent_status` - Specific agent details
+  - `get_daemon_status` - Is daemon online?
+  - `get_conversation_summary` - Conversation context
+  - All tools sandboxed by userId (security)
+
+- **types.ts** - Type definitions:
+  - `MasterAgentDecision`, `Task`, `TaskResult`
+  - `MODELS` configuration
+  - API types
+
+### 3. Updated Routes (`src/server/routes/routes.ts`)
+
+- **POST /api/master-agent/query**
+  - Creates task in MongoDB
+  - Returns taskId immediately (non-blocking)
+  - Processes query in background with MasterAgent
+  - Adds user message to conversation
+
+- **GET /api/master-agent/task/:taskId**
+  - Queries MongoDB directly (no proxy)
+  - Returns task status and result
+  - Includes dual output format
+
+- **GET /api/master-agent/health**
+  - Local health check (no external dependency)
+
+### 4. Voice Helper Functions
+
+- `callMasterAgentFromVoice()` - Now uses integrated MasterAgent
+- `pollAndSpeakResult()` - Queries MongoDB directly, uses glassesDisplay
+
+### 5. TerminalAgent Cleanup Fix
+
+- Force kills PTY process after exit command
+- Properly clears session references
+- Prevents process hanging
 
 ---
 
@@ -64,16 +117,24 @@ GEMINI_API_KEY=your_key bun run daemon
 
 ### Terminal 3: Test
 ```bash
-# Check daemons
+# Check connected daemons
 curl http://localhost:3001/daemon-api/test/daemons
 
-# Spawn agent
+# Spawn agent via test endpoint
 curl -X POST http://localhost:3001/daemon-api/test/spawn \
   -H "Content-Type: application/json" \
-  -d '{"email": "YOUR_EMAIL", "goal": "YOUR_GOAL"}'
+  -d '{"email": "YOUR_EMAIL", "goal": "What is 2+2?"}'
 
-# Check status
+# Poll for result
 curl http://localhost:3001/daemon-api/test/agent/AGENT_ID
+
+# Test new MasterAgent endpoint
+curl -X POST http://localhost:3001/api/master-agent/query \
+  -H "Content-Type: application/json" \
+  -d '{"userId": "YOUR_EMAIL", "query": "What is TypeScript?"}'
+
+# Poll task result
+curl "http://localhost:3001/api/master-agent/task/TASK_ID?userId=YOUR_EMAIL"
 ```
 
 ---
@@ -83,22 +144,29 @@ curl http://localhost:3001/daemon-api/test/agent/AGENT_ID
 | File | Purpose |
 |------|---------|
 | `src/server/db/mongo.ts` | MongoDB connection |
-| `src/server/daemon/DaemonManager.ts` | Manages daemons, persists to MongoDB |
-| `src/server/daemon/routes.ts` | REST endpoints including test endpoints |
-| `daemon/src/index.ts` | Desktop daemon entry point |
-| `daemon/src/terminal-agent.ts` | Runs Claude CLI in PTY |
-| `daemon/src/observer.ts` | LLM observer (Gemini Flash) |
+| `src/server/conversation/ConversationService.ts` | Conversation history |
+| `src/server/master-agent/MasterAgent.ts` | Main orchestrator |
+| `src/server/master-agent/MasterAgentTools.ts` | Sandboxed tools |
+| `src/server/daemon/DaemonManager.ts` | Daemon + agent management |
+| `src/server/routes/routes.ts` | API routes |
+| `daemon/src/terminal-agent.ts` | Claude CLI in PTY |
+| `daemon/src/observer.ts` | LLM observer (Gemini) |
 
 ---
 
-## Environment Variables Required
+## Environment Variables
 
 ```bash
-# .env file
+# Server (.env)
 PORT=3001
-MONGODB_URI=mongodb+srv://...  # URL encode @ as %40 in password
+MONGODB_URI=mongodb+srv://...
 ANTHROPIC_API_KEY=sk-ant-...
-GEMINI_API_KEY=AIza...         # For daemon's LLM observer
+
+# Daemon
+GEMINI_API_KEY=AIza...
+DAEMON_SERVER_URL=http://localhost:3001
+
+# MentraOS
 PACKAGE_NAME=com.mentra.soga
 MENTRAOS_API_KEY=...
 ```
@@ -107,11 +175,61 @@ MENTRAOS_API_KEY=...
 
 ## MongoDB Collections
 
-- `subagents` - Terminal agent state (agentId, status, result, etc.)
-- `tasks` - Master agent tasks (to be implemented)
+| Collection | Purpose |
+|------------|---------|
+| `subagents` | Terminal agent state (agentId, status, result) |
+| `tasks` | MasterAgent tasks (taskId, query, result) |
+| `conversations` | Conversation history per user |
 
 ---
 
-## Git Branch
+## Next Steps
 
-Working on `integration` branch. Commit current state before continuing.
+1. [ ] Run full end-to-end test
+2. [ ] Test conversation history persistence
+3. [ ] Test tool use (get_recent_tasks, etc.)
+4. [ ] Test dual output (glassesDisplay + webviewContent)
+5. [ ] Test spawn_agent decision flow
+6. [ ] Clean up old `src/master-agent/` directory
+7. [ ] Update frontend to use new response format
+8. [ ] Add error handling for edge cases
+
+---
+
+## Architecture Summary
+
+```
+User Query (Voice/Webview)
+    │
+    ▼
+POST /api/master-agent/query
+    │
+    ├─► Create task in MongoDB
+    ├─► Return taskId immediately
+    │
+    └─► Background: MasterAgent.processQuery()
+            │
+            ├─► Load conversation history
+            ├─► Decide action (Haiku 4.5)
+            │       │
+            │       ├─► direct_response → Answer immediately
+            │       ├─► clarifying_question → Ask for more info
+            │       └─► spawn_agent → Terminal agent needed
+            │
+            ├─► If spawn_agent:
+            │       ├─► Formulate goal (Sonnet 4.5)
+            │       ├─► DaemonManager.spawnAgent()
+            │       ├─► Wait for completion
+            │       └─► Synthesize result (Sonnet 4.5)
+            │
+            ├─► Generate dual output:
+            │       ├─► glassesDisplay (max 100 chars)
+            │       └─► webviewContent (full markdown)
+            │
+            └─► Save to MongoDB + conversation
+    
+    ▼
+GET /api/master-agent/task/:id (polling)
+    │
+    └─► { status, result: { glassesDisplay, webviewContent } }
+```

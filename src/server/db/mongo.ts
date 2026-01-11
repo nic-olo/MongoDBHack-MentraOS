@@ -76,22 +76,37 @@ export async function closeMongo(): Promise<void> {
 async function createIndexes(db: Db): Promise<void> {
   try {
     // Subagents collection indexes
-    await db.collection("subagents").createIndexes([
-      { key: { agentId: 1 }, unique: true },
-      { key: { daemonId: 1 } },
-      { key: { userId: 1 } },
-      { key: { sessionId: 1 } },
-      { key: { status: 1 } },
-      { key: { createdAt: -1 } },
-    ]);
+    await db
+      .collection("subagents")
+      .createIndexes([
+        { key: { agentId: 1 }, unique: true },
+        { key: { daemonId: 1 } },
+        { key: { userId: 1 } },
+        { key: { sessionId: 1 } },
+        { key: { status: 1 } },
+        { key: { createdAt: -1 } },
+      ]);
 
     // Tasks collection indexes
-    await db.collection("tasks").createIndexes([
-      { key: { taskId: 1 }, unique: true },
-      { key: { userId: 1 } },
-      { key: { status: 1 } },
-      { key: { createdAt: -1 } },
-    ]);
+    await db
+      .collection("tasks")
+      .createIndexes([
+        { key: { taskId: 1 }, unique: true },
+        { key: { userId: 1 } },
+        { key: { conversationId: 1 } },
+        { key: { status: 1 } },
+        { key: { createdAt: -1 } },
+      ]);
+
+    // Conversations collection indexes
+    await db
+      .collection("conversations")
+      .createIndexes([
+        { key: { conversationId: 1 }, unique: true },
+        { key: { userId: 1 } },
+        { key: { lastActiveAt: -1 } },
+        { key: { createdAt: -1 } },
+      ]);
 
     console.log("[MongoDB] Indexes created");
   } catch (error) {
