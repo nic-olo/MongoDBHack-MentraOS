@@ -96,9 +96,20 @@ class ExampleMentraOSApp extends AppServer {
     const { createProxyMiddleware } = require("http-proxy-middleware");
     this.getExpressApp().use(express.json());
 
-    // Enable CORS for localhost:5173 (Vite dev server)
+    // Enable CORS for localhost and ngrok
     this.getExpressApp().use((req: any, res: any, next: any) => {
-      res.header("Access-Control-Allow-Origin", "http://localhost:5173");
+      const origin = req.headers.origin;
+      const allowedOrigins = [
+        "http://localhost:5173",
+        "https://general.dev.tpa.ngrok.app"
+      ];
+
+      if (origin && allowedOrigins.includes(origin)) {
+        res.header("Access-Control-Allow-Origin", origin);
+      } else {
+        res.header("Access-Control-Allow-Origin", "*");
+      }
+
       res.header(
         "Access-Control-Allow-Methods",
         "GET, POST, PUT, DELETE, OPTIONS",
