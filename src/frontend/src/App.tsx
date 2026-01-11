@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useMentraAuth } from '@mentra/react';
-import BottomNavigation from './components/BottomNavigation';
-import Test from './pages/WorkSpace';
+import WorkSpace from './pages/WorkSpace';
 
 export default function App() {
   const { userId, isLoading, error, isAuthenticated } = useMentraAuth();
@@ -44,36 +43,7 @@ export default function App() {
     }
   }, [isAuthenticated, userId]);
 
-  // Handle theme change and save to backend
-  const handleThemeChange = async (newIsDark: boolean) => {
-    // Update UI immediately for responsive feel
-    setIsDark(newIsDark);
 
-    // Save to backend if user is authenticated
-    if (userId) {
-      const theme = newIsDark ? 'dark' : 'light';
-      console.log(`🎨 [Theme] Saving theme preference for user ${userId}:`, theme);
-
-      try {
-        const response = await fetch('/api/theme-preference', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId, theme })
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-          console.log('🎨 [Theme] Theme preference saved successfully:', theme);
-        } else {
-          console.error('🎨 [Theme] Failed to save theme preference:', data);
-        }
-      } catch (error) {
-        console.error('🎨 [Theme] Error saving theme preference:', error);
-        // Continue using the theme locally even if save fails
-      }
-    }
-  };
 
   // Handle loading state
   if (isLoading) {
@@ -116,9 +86,7 @@ export default function App() {
 
   return (
     <div className={`min-h-screen bg-white ${isDark ? 'dark' : 'light'}`} >
-      <div> </div>
-      <Test />
-      {/* <BottomNavigation/> */}
+      <WorkSpace userId={userId || 'anonymous'} />
     </div>
   );
 }
