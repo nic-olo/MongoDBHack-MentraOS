@@ -98,7 +98,7 @@ export default function App() {
       className={`min-h-screen ${isDark ? 'dark' : 'light'}`}
       style={{ backgroundColor: 'var(--surface-base)' }}
     >
-      <WorkSpace userId={userId || 'anonymous'} />
+      <WorkSpace userId={'aryan.mentra.dev.public@gmail.com'} />
     </motion.div>
   );
 }

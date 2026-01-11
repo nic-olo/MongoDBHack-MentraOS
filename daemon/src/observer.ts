@@ -1,14 +1,14 @@
 /**
  * LLM Observer
- * Uses a fast LLM (Gemini Flash) to intelligently observe terminal state
+ * Uses a fast LLM (Claude Haiku) to intelligently observe terminal state
  * Instead of brittle regex matching, we use AI to understand what's happening
  */
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import Anthropic from "@anthropic-ai/sdk";
 import type { TerminalObservation, TerminalState } from "./types";
 
-// Initialize Gemini client
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+// Initialize Anthropic client (uses ANTHROPIC_API_KEY env var automatically)
+const anthropic = new Anthropic();
 
 const SYSTEM_PROMPT = `You are observing a terminal running Claude Code CLI. Your job is to analyze the terminal output and determine the current state.
 
@@ -54,7 +54,7 @@ IMPORTANT PATTERNS:
 Remember: Output ONLY the JSON object, nothing else.`;
 
 /**
- * Observe terminal state using Gemini Flash
+ * Observe terminal state using Claude Haiku
  */
 export async function observeTerminal(
   buffer: string,
@@ -62,8 +62,6 @@ export async function observeTerminal(
   goalSubmitted: boolean
 ): Promise<TerminalObservation> {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-
     const prompt = `CONTEXT:
 - User's goal: "${goal}"
 - Goal has been submitted to Claude: ${goalSubmitted ? "YES" : "NO (still waiting to send)"}
@@ -75,32 +73,37 @@ ${buffer.slice(-3000)}
 
 Analyze the terminal state and respond with JSON only.`;
 
-    const result = await model.generateContent({
-      contents: [
+    const response = await anthropic.messages.create({
+      model: "claude-3-5-haiku-20241022",
+      max_tokens: 256,
+      system: SYSTEM_PROMPT,
+      messages: [
         {
           role: "user",
-          parts: [{ text: SYSTEM_PROMPT + "\n\n" + prompt }],
+          content: prompt,
         },
       ],
-      generationConfig: {
-        temperature: 0.1, // Low temperature for consistent outputs
-        maxOutputTokens: 256,
-      },
     });
 
-    const response = result.response.text().trim();
+    // Extract text from response
+    const textContent = response.content.find((c) => c.type === "text");
+    if (!textContent || textContent.type !== "text") {
+      throw new Error("No text content in response");
+    }
+
+    const responseText = textContent.text.trim();
 
     // Parse JSON response
     let parsed: TerminalObservation;
     try {
       // Handle potential markdown wrapping
-      let jsonStr = response;
+      let jsonStr = responseText;
       if (jsonStr.startsWith("```")) {
         jsonStr = jsonStr.replace(/```json?\n?/g, "").replace(/```/g, "");
       }
       parsed = JSON.parse(jsonStr.trim());
     } catch (parseError) {
-      console.error("[observer] Failed to parse LLM response:", response);
+      console.error("[observer] Failed to parse LLM response:", responseText);
       // Return a safe default
       return {
         state: "working",

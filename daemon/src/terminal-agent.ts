@@ -66,7 +66,7 @@ export class TerminalAgent extends EventEmitter {
   }
 
   /**
-   * Start the agent - launches Claude CLI and submits the goal
+   * Start the agent - launches Claude CLI with -p flag (non-interactive)
    */
   async start(): Promise<AgentResult> {
     if (this.isRunning) {
@@ -78,18 +78,8 @@ export class TerminalAgent extends EventEmitter {
     this.updateStatus("initializing", "Starting Claude CLI...");
 
     try {
-      // Start the terminal with Claude CLI
-      await this.startTerminal();
-
-      // Wait for Claude to be ready
-      await this.waitForReady();
-
-      // Submit the goal
-      await this.submitGoal();
-
-      // Monitor until completion
-      const result = await this.monitorUntilComplete();
-
+      // Start Claude CLI directly with -p flag (non-interactive mode)
+      const result = await this.runClaudeNonInteractive();
       return result;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -138,7 +128,106 @@ export class TerminalAgent extends EventEmitter {
   // ===========================================================================
 
   /**
-   * Start the PTY terminal with Claude CLI
+   * Run Claude CLI in non-interactive mode using -p flag
+   * This is much more reliable than trying to interact with the CLI
+   */
+  private async runClaudeNonInteractive(): Promise<AgentResult> {
+    this.updateStatus("running", "Running Claude CLI...");
+    this.log("status", `Running: claude -p "${this.goal}"`);
+
+    let stdout = "";
+    let stderr = "";
+
+    try {
+      const proc = Bun.spawn(
+        ["claude", "-p", this.goal, "--allowedTools", "Bash,Read,Write,Edit,Glob,Grep"],
+        {
+          cwd: this.workingDirectory,
+          env: {
+            ...process.env,
+            // Ensure we don't get interactive prompts
+            CI: "true",
+          },
+          stdout: "pipe",
+          stderr: "pipe",
+        }
+      );
+
+      // Read stdout
+      const stdoutReader = proc.stdout.getReader();
+      const stderrReader = proc.stderr.getReader();
+
+      // Process stdout
+      const readStdout = async () => {
+        while (true) {
+          const { done, value } = await stdoutReader.read();
+          if (done) break;
+          const text = new TextDecoder().decode(value);
+          stdout += text;
+          this.log("stdout", text);
+
+          // Update status with progress
+          const lines = text.split("\n").filter(l => l.trim());
+          if (lines.length > 0) {
+            this.updateStatus("running", lines[lines.length - 1].slice(0, 100));
+          }
+        }
+      };
+
+      // Process stderr
+      const readStderr = async () => {
+        while (true) {
+          const { done, value } = await stderrReader.read();
+          if (done) break;
+          const text = new TextDecoder().decode(value);
+          stderr += text;
+          this.log("stderr", text);
+        }
+      };
+
+      // Wait for both streams and process to complete
+      await Promise.all([readStdout(), readStderr()]);
+      const exitCode = await proc.exited;
+
+      if (exitCode === 0) {
+        this.updateStatus("completed", "Claude CLI completed successfully");
+        return {
+          agentId: this.agentId,
+          agentType: "terminal",
+          goal: this.goal,
+          status: "completed",
+          result: stdout,
+          executionTimeMs: Date.now() - this.startTime,
+          logs: stdout.split("\n"),
+        };
+      } else {
+        this.updateStatus("failed", `Claude CLI exited with code ${exitCode}`);
+        return {
+          agentId: this.agentId,
+          agentType: "terminal",
+          goal: this.goal,
+          status: "failed",
+          error: stderr || `Exit code: ${exitCode}`,
+          executionTimeMs: Date.now() - this.startTime,
+          logs: [...stdout.split("\n"), ...stderr.split("\n")],
+        };
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      return {
+        agentId: this.agentId,
+        agentType: "terminal",
+        goal: this.goal,
+        status: "failed",
+        error: errorMsg,
+        executionTimeMs: Date.now() - this.startTime,
+        logs: [errorMsg],
+      };
+    }
+  }
+
+  /**
+   * Start the PTY terminal with Claude CLI (legacy interactive mode)
    */
   private async startTerminal(): Promise<void> {
     this.log("status", "Launching terminal...");

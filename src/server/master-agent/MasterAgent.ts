@@ -348,8 +348,9 @@ export class MasterAgent {
       let jsonStr = text.trim();
 
       // Handle markdown code blocks (in case Claude still uses them)
-      // Use greedy matching to find the LAST closing ``` to handle nested backticks
-      if (jsonStr.includes("```")) {
+      // BUT only if the response doesn't already start with { (valid JSON)
+      // This prevents incorrectly extracting from code blocks INSIDE the JSON content
+      if (jsonStr.includes("```") && !jsonStr.startsWith("{")) {
         // Try json block first
         const jsonBlockMatch = jsonStr.match(
           /```json\s*([\s\S]*?)```(?![\s\S]*```)/,
