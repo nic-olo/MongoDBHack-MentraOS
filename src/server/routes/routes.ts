@@ -29,6 +29,7 @@ import { getDb, isConnected } from "../db/mongo";
 import { getMasterAgent } from "../master-agent";
 import { getConversationService } from "../conversation";
 import { setupConversationRoutes } from "./conversation.routes.js";
+import { getDaemonManager } from "../daemon";
 
 // Store SSE clients with userId mapping
 interface SSEClient {
@@ -136,6 +137,94 @@ export function setupWebviewRoutes(
 ): void {
   // Setup conversation history routes
   setupConversationRoutes(app);
+
+  // ==========================================================================
+  // Debug Endpoints (no auth required)
+  // ==========================================================================
+
+  /**
+   * GET /api/debug/daemons
+   * Comprehensive debug endpoint for daemon connections
+   * Shows all connected daemons, agents, and helps diagnose connection issues
+   */
+  app.get("/api/debug/daemons", (req: any, res: any) => {
+    const daemonManager = getDaemonManager();
+    const debugInfo = daemonManager.getDebugInfo();
+
+    return res.json({
+      timestamp: new Date().toISOString(),
+      ...debugInfo,
+      hints: {
+        daemonOffline:
+          "If daemon shows offline: 1) Is daemon running? 2) Is WebSocket connected? 3) Does userId match?",
+        userIdMismatch:
+          "Frontend userId must match daemon's email/userId for agent spawning to work",
+        checkConnections:
+          "The 'connections' array shows active WebSocket connections by daemonId",
+        howToStart: "Start daemon with: cd daemon && bun run start",
+      },
+    });
+  });
+
+  /**
+   * GET /api/debug/daemons/:userId
+   * Debug endpoint for a specific user - diagnoses why agent spawning might fail
+   */
+  app.get("/api/debug/daemons/:userId", (req: any, res: any) => {
+    const { userId } = req.params;
+    const daemonManager = getDaemonManager();
+
+    // Get all daemons
+    const allDaemons = daemonManager.getAllDaemons();
+
+    // Find daemons for this user
+    const userDaemons = daemonManager.getDaemonsForUser(userId);
+    const onlineDaemon = daemonManager.getOnlineDaemonForUser(userId);
+
+    // Get all agents for user's daemons
+    const userAgents = userDaemons.flatMap((d: any) =>
+      daemonManager.getAgentsForDaemon(d.daemonId),
+    );
+
+    // Check for potential matches (case-insensitive, partial)
+    const potentialMatches = allDaemons.filter(
+      (d: any) =>
+        d.userId.toLowerCase().includes(userId.toLowerCase()) ||
+        userId.toLowerCase().includes(d.userId.toLowerCase()),
+    );
+
+    return res.json({
+      timestamp: new Date().toISOString(),
+      queryUserId: userId,
+      result: {
+        foundDaemons: userDaemons.length,
+        onlineDaemon: onlineDaemon
+          ? {
+              daemonId: onlineDaemon.daemonId,
+              userId: onlineDaemon.userId,
+              status: onlineDaemon.status,
+              lastSeen: onlineDaemon.lastSeen,
+            }
+          : null,
+        canSpawnAgent: !!onlineDaemon,
+      },
+      userDaemons,
+      userAgents,
+      debugging: {
+        allRegisteredUserIds: allDaemons.map((d: any) => d.userId),
+        potentialMatches: potentialMatches.map((d: any) => ({
+          daemonId: d.daemonId,
+          userId: d.userId,
+          status: d.status,
+        })),
+        suggestion: !onlineDaemon
+          ? potentialMatches.length > 0
+            ? `Found potential match. Try using userId: "${potentialMatches[0].userId}" instead`
+            : "No daemon found. Make sure daemon is running and connected with this userId"
+          : "Daemon is online and ready to spawn agents",
+      },
+    });
+  });
 
   // SSE Route: Real-time photo stream
   app.get("/api/photo-stream", (req: any, res: any) => {

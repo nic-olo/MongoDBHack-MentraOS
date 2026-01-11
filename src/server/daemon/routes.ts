@@ -181,6 +181,88 @@ export function createDaemonRoutes(daemonManager: DaemonManager): Router {
     });
   });
 
+  /**
+   * GET /daemon/debug
+   * Comprehensive debug endpoint showing all daemons, agents, and connections
+   * No auth required for easy debugging
+   */
+  router.get("/daemon/debug", (req: Request, res: Response) => {
+    const debugInfo = daemonManager.getDebugInfo();
+
+    return res.json({
+      timestamp: new Date().toISOString(),
+      ...debugInfo,
+      // Add helpful hints
+      hints: {
+        daemonOffline:
+          "If daemon shows offline, check: 1) Is daemon running? 2) Is WebSocket connected? 3) Does userId match?",
+        userIdMismatch:
+          "Frontend userId must match daemon's email/userId for agent spawning to work",
+        checkConnections:
+          "The 'connections' array shows active WebSocket connections by daemonId",
+      },
+    });
+  });
+
+  /**
+   * GET /daemon/debug/:userId
+   * Debug endpoint for a specific user - shows their daemons and why agent spawning might fail
+   */
+  router.get("/daemon/debug/:userId", (req: Request, res: Response) => {
+    const { userId } = req.params;
+
+    // Get all daemons
+    const allDaemons = daemonManager.getAllDaemons();
+
+    // Find daemons for this user
+    const userDaemons = daemonManager.getDaemonsForUser(userId);
+    const onlineDaemon = daemonManager.getOnlineDaemonForUser(userId);
+
+    // Get all agents for user's daemons
+    const userAgents = userDaemons.flatMap((d) =>
+      daemonManager.getAgentsForDaemon(d.daemonId),
+    );
+
+    // Check for potential matches (case-insensitive, partial)
+    const potentialMatches = allDaemons.filter(
+      (d) =>
+        d.userId.toLowerCase().includes(userId.toLowerCase()) ||
+        userId.toLowerCase().includes(d.userId.toLowerCase()),
+    );
+
+    return res.json({
+      timestamp: new Date().toISOString(),
+      queryUserId: userId,
+      result: {
+        foundDaemons: userDaemons.length,
+        onlineDaemon: onlineDaemon
+          ? {
+              daemonId: onlineDaemon.daemonId,
+              userId: onlineDaemon.userId,
+              status: onlineDaemon.status,
+              lastSeen: onlineDaemon.lastSeen,
+            }
+          : null,
+        canSpawnAgent: !!onlineDaemon,
+      },
+      userDaemons,
+      userAgents,
+      debugging: {
+        allRegisteredUserIds: allDaemons.map((d) => d.userId),
+        potentialMatches: potentialMatches.map((d) => ({
+          daemonId: d.daemonId,
+          userId: d.userId,
+          status: d.status,
+        })),
+        suggestion: !onlineDaemon
+          ? potentialMatches.length > 0
+            ? `Found potential match. Try using userId: "${potentialMatches[0].userId}" instead`
+            : "No daemon found. Make sure daemon is running and connected with this userId"
+          : "Daemon is online and ready to spawn agents",
+      },
+    });
+  });
+
   // ===========================================================================
   // Authenticated Endpoints (auth required)
   // ===========================================================================

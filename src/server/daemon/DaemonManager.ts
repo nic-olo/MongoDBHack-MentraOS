@@ -648,6 +648,73 @@ export class DaemonManager extends EventEmitter {
   }
 
   /**
+   * Get all connected daemons (for debugging)
+   */
+  getAllDaemons(): DaemonState[] {
+    return Array.from(this.daemons.values());
+  }
+
+  /**
+   * Get all agents (for debugging)
+   */
+  getAllAgents(): SubAgentState[] {
+    return Array.from(this.agents.values());
+  }
+
+  /**
+   * Get all registered tokens (for debugging)
+   */
+  getAllTokens(): Array<{ token: string; daemonId: string; userId: string }> {
+    return Array.from(this.tokenMap.entries()).map(([token, info]) => ({
+      token,
+      daemonId: info.daemonId,
+      userId: info.userId,
+    }));
+  }
+
+  /**
+   * Get debug info (comprehensive debugging endpoint)
+   */
+  getDebugInfo(): {
+    daemons: DaemonState[];
+    agents: SubAgentState[];
+    connections: string[];
+    tokens: Array<{ token: string; daemonId: string; userId: string }>;
+    summary: {
+      totalDaemons: number;
+      onlineDaemons: number;
+      offlineDaemons: number;
+      totalAgents: number;
+      runningAgents: number;
+      completedAgents: number;
+      failedAgents: number;
+    };
+  } {
+    const daemons = this.getAllDaemons();
+    const agents = this.getAllAgents();
+    const connections = Array.from(this.connections.keys());
+    const tokens = this.getAllTokens();
+
+    return {
+      daemons,
+      agents,
+      connections,
+      tokens,
+      summary: {
+        totalDaemons: daemons.length,
+        onlineDaemons: daemons.filter((d) => d.status === "online").length,
+        offlineDaemons: daemons.filter((d) => d.status === "offline").length,
+        totalAgents: agents.length,
+        runningAgents: agents.filter(
+          (a) => a.status === "running" || a.status === "initializing",
+        ).length,
+        completedAgents: agents.filter((a) => a.status === "completed").length,
+        failedAgents: agents.filter((a) => a.status === "failed").length,
+      },
+    };
+  }
+
+  /**
    * Wait for an agent to complete (poll MongoDB)
    * Returns the agent state when complete, or null on timeout
    */
