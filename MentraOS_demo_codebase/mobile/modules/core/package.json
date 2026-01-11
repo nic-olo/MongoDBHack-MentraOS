@@ -23,13 +23,13 @@
     "core",
     "Core"
   ],
-  "repository": "https://github.com/fossephate/core",
+  "repository": "https://github.com/nic-olo/MongoDBHack-MentraOS",
   "bugs": {
-    "url": "https://github.com/fossephate/core/issues"
+    "url": "https://github.com/nic-olo/MongoDBHack-MentraOS/issues"
   },
-  "author": "fossephate <6175367+fossephate@users.noreply.github.com> (https://github.com/fossephate)",
+  "author": "MentraOS Team",
   "license": "MIT",
-  "homepage": "https://github.com/fossephate/core#readme",
+  "homepage": "https://github.com/nic-olo/MongoDBHack-MentraOS#readme",
   "dependencies": {},
   "devDependencies": {
     "expo-module-scripts": "^5.0.7"

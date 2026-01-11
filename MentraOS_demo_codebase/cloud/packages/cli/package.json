@@ -21,7 +21,7 @@
     "smart-glasses",
     "augmented-reality"
   ],
-  "author": "Mentra",
+  "author": "MentraOS Team",
   "license": "MIT",
   "dependencies": {
     "@mentra/types": "workspace:*",
