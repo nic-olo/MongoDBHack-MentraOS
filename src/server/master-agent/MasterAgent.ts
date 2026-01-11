@@ -54,21 +54,21 @@ Based on the user's query and conversation history, you must decide ONE of three
    - Need to analyze actual codebase (not just general questions)
    - Clear, actionable task with enough context
 
-IMPORTANT OUTPUT FORMAT:
-You must ALWAYS provide TWO versions of your response:
-- glasses_display: MAX 100 characters. 1-2 short sentences for tiny AR glasses display. Be extremely concise.
-- webview_content: Full detailed response with markdown formatting for web display.
+CRITICAL OUTPUT FORMAT RULES:
+1. Output ONLY raw JSON - NO markdown code blocks, NO backticks around the JSON
+2. You must provide TWO versions of your response:
+   - glasses_display: MAX 100 characters. 1-2 short sentences for tiny AR glasses display.
+   - webview_content: Full detailed response with markdown formatting for web display.
 
-When you've decided, output a JSON object with this exact structure:
-{
-  "decision": "direct_response" | "clarifying_question" | "spawn_agent",
-  "glasses_display": "Short 1-2 sentence version for AR glasses (MAX 100 chars)",
-  "webview_content": "Full detailed markdown response for web display",
-  "goal": "Detailed goal for terminal agent (ONLY if decision is spawn_agent)",
-  "reasoning": "Brief explanation of why you chose this action"
-}
+Output this exact JSON structure (raw JSON, no code blocks):
+{"decision":"direct_response|clarifying_question|spawn_agent","glasses_display":"Short version for AR glasses (MAX 100 chars)","webview_content":"Full markdown response for web display","goal":"Goal for terminal agent (ONLY if spawn_agent)","reasoning":"Why you chose this action"}
+
+Example output (note: NO backticks, just raw JSON):
+{"decision":"direct_response","glasses_display":"Hello! How can I help you today?","webview_content":"# Hello!\\n\\nI'm your AI coding assistant. I can help you with:\\n- Answering coding questions\\n- Writing and editing code\\n- Running commands on your machine\\n\\nWhat would you like to work on?","reasoning":"Simple greeting, no code work needed"}
 
 Remember:
+- Output ONLY the JSON object, nothing else before or after
+- Do NOT wrap in markdown code blocks
 - Be helpful and conversational
 - If the user's daemon is offline and they need code work, tell them to start it
 - Use tools to check context when helpful
@@ -253,34 +253,61 @@ export class MasterAgent {
         messages,
       });
 
-      // Check if Claude wants to use a tool
-      const toolUseBlock = response.content.find(
+      // Find ALL tool use blocks in the response
+      const toolUseBlocks = response.content.filter(
         (
           block: Anthropic.Messages.ContentBlock,
         ): block is Anthropic.Messages.ToolUseBlock =>
           block.type === "tool_use",
       );
 
-      if (toolUseBlock) {
-        console.log(`[MasterAgent] Tool call: ${toolUseBlock.name}`);
-
-        // Execute the tool
-        const toolResult = await this.tools.executeTool(
-          toolUseBlock.name,
-          toolUseBlock.input as Record<string, any>,
-        );
-
-        // Add assistant message and tool result
+      if (toolUseBlocks.length > 0) {
+        // Add assistant message with the full response
         messages.push({ role: "assistant", content: response.content });
-        messages.push({
-          role: "user",
-          content: [
-            {
+
+        // Execute ALL tools and collect results
+        const toolResults: Anthropic.Messages.ToolResultBlockParam[] = [];
+
+        for (const toolUseBlock of toolUseBlocks) {
+          console.log(`[MasterAgent] Tool call: ${toolUseBlock.name}`);
+
+          try {
+            // Execute the tool
+            const toolResult = await this.tools.executeTool(
+              toolUseBlock.name,
+              toolUseBlock.input as Record<string, any>,
+            );
+
+            toolResults.push({
               type: "tool_result",
               tool_use_id: toolUseBlock.id,
               content: JSON.stringify(toolResult),
-            },
-          ],
+            });
+          } catch (toolError) {
+            // If tool execution fails, still provide a result to Claude
+            console.error(
+              `[MasterAgent] Tool ${toolUseBlock.name} failed:`,
+              toolError,
+            );
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: toolUseBlock.id,
+              content: JSON.stringify({
+                error: true,
+                message:
+                  toolError instanceof Error
+                    ? toolError.message
+                    : String(toolError),
+              }),
+              is_error: true,
+            });
+          }
+        }
+
+        // Add all tool results in a single user message
+        messages.push({
+          role: "user",
+          content: toolResults,
         });
 
         // Continue loop
@@ -318,25 +345,69 @@ export class MasterAgent {
   private parseDecision(text: string): MasterAgentDecision {
     try {
       // Try to extract JSON from the response
-      let jsonStr = text;
+      let jsonStr = text.trim();
 
-      // Handle markdown code blocks
-      if (text.includes("```json")) {
-        const match = text.match(/```json\s*([\s\S]*?)\s*```/);
-        if (match) {
-          jsonStr = match[1];
-        }
-      } else if (text.includes("```")) {
-        const match = text.match(/```\s*([\s\S]*?)\s*```/);
-        if (match) {
-          jsonStr = match[1];
+      // Handle markdown code blocks (in case Claude still uses them)
+      // Use greedy matching to find the LAST closing ``` to handle nested backticks
+      if (jsonStr.includes("```")) {
+        // Try json block first
+        const jsonBlockMatch = jsonStr.match(
+          /```json\s*([\s\S]*?)```(?![\s\S]*```)/,
+        );
+        if (jsonBlockMatch) {
+          jsonStr = jsonBlockMatch[1].trim();
+        } else {
+          // Try generic code block
+          const codeBlockMatch = jsonStr.match(
+            /```\s*([\s\S]*?)```(?![\s\S]*```)/,
+          );
+          if (codeBlockMatch) {
+            jsonStr = codeBlockMatch[1].trim();
+          }
         }
       }
 
-      // Try to find JSON object
-      const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        jsonStr = jsonMatch[0];
+      // Find the outermost JSON object by matching balanced braces
+      const jsonStart = jsonStr.indexOf("{");
+      if (jsonStart !== -1) {
+        let depth = 0;
+        let jsonEnd = -1;
+        let inString = false;
+        let escapeNext = false;
+
+        for (let i = jsonStart; i < jsonStr.length; i++) {
+          const char = jsonStr[i];
+
+          if (escapeNext) {
+            escapeNext = false;
+            continue;
+          }
+
+          if (char === "\\") {
+            escapeNext = true;
+            continue;
+          }
+
+          if (char === '"' && !escapeNext) {
+            inString = !inString;
+            continue;
+          }
+
+          if (!inString) {
+            if (char === "{") depth++;
+            if (char === "}") {
+              depth--;
+              if (depth === 0) {
+                jsonEnd = i + 1;
+                break;
+              }
+            }
+          }
+        }
+
+        if (jsonEnd !== -1) {
+          jsonStr = jsonStr.substring(jsonStart, jsonEnd);
+        }
       }
 
       const parsed = JSON.parse(jsonStr);
@@ -353,11 +424,13 @@ export class MasterAgent {
       console.error("[MasterAgent] Failed to parse decision:", error);
       console.error("[MasterAgent] Raw text:", text);
 
-      // Return a fallback direct response
+      // Return a fallback direct response with a user-friendly message
+      // Don't expose raw JSON to the user
       return {
         type: "direct_response",
-        glassesDisplay: "Processing your request.",
-        webviewContent: text, // Use the raw text as content
+        glassesDisplay: "I encountered an issue. Please try again.",
+        webviewContent:
+          "I apologize, but I had trouble processing that request. Could you please try rephrasing your question?",
         reasoning: "Failed to parse structured response",
       };
     }
