@@ -6,6 +6,7 @@
 import * as readline from "readline";
 import { DaemonClient } from "./daemon-client";
 import { AgentPool, getAgentPool } from "./agent-pool";
+import { TerminalAgent } from "./terminal-agent";
 import {
   loadConfig,
   isConfigured,
@@ -359,7 +360,59 @@ async function main(): Promise<void> {
     console.log("  (none)    Start the daemon (runs setup if needed)");
     console.log("  status    Show current configuration");
     console.log("  reset     Clear configuration and start fresh");
+    console.log("  test      Run a test agent locally (no server needed)");
     console.log("  help      Show this help message");
+    return;
+  }
+
+  // Handle test command - run TerminalAgent directly without server
+  if (command === "test") {
+    const goal =
+      args.slice(1).join(" ") ||
+      "List the files in the current directory and describe what you see";
+
+    console.log("🧪 Running TerminalAgent test (no server connection)\n");
+    console.log(`📁 Working directory: ${process.cwd()}`);
+    console.log(`🎯 Goal: "${goal}"\n`);
+    console.log("=".repeat(60));
+    console.log("");
+
+    const agent = new TerminalAgent({
+      agentId: `test_${Date.now()}`,
+      goal,
+      workingDirectory: process.cwd(),
+      autoApprove: true,
+      timeout: 3 * 60 * 1000, // 3 minutes for test
+      streamOutput: true,
+      onLog: (log) => {
+        if (log.type === "stdout") {
+          // Don't prefix stdout to keep terminal output clean
+          process.stdout.write(log.content);
+        } else {
+          console.log(`[${log.type}] ${log.content}`);
+        }
+      },
+      onStatusChange: (status, step) => {
+        console.log(`\n📊 Status: ${status}${step ? ` - ${step}` : ""}\n`);
+      },
+    });
+
+    try {
+      const result = await agent.start();
+
+      console.log("\n" + "=".repeat(60));
+      console.log("🏁 Test Complete!\n");
+      console.log(`   Status: ${result.status}`);
+      console.log(`   Duration: ${result.executionTimeMs}ms`);
+      if (result.error) {
+        console.log(`   Error: ${result.error}`);
+      }
+      console.log("");
+    } catch (error) {
+      console.error("\n❌ Test failed:", error);
+      process.exit(1);
+    }
+
     return;
   }
 

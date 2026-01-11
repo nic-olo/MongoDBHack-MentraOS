@@ -19,10 +19,9 @@
  */
 
 // Load environment variables from .env file
-import 'dotenv/config';
+import "dotenv/config";
 
 import { AppServer, AppSession } from "@mentra/sdk";
-import { setupButtonHandler } from "./event/button";
 import {
   setupWebviewRoutes,
   broadcastTranscriptionToClients,
@@ -42,6 +41,7 @@ import {
 } from "./manager/glassesDisplayManager";
 import { TRANSCRIPTION_CONFIG } from "./const/wakeWords";
 import { getDaemonManager, createDaemonRoutes } from "./daemon";
+import { connectMongo } from "./db/mongo";
 import { WebSocketServer } from "ws";
 import * as path from "path";
 import * as http from "http";
@@ -205,7 +205,6 @@ class ExampleMentraOSApp extends AppServer {
     // Show welcome message on glasses
     await glassesDisplay.showStatus("🎯 SOGA Ready");
     await glassesDisplay.showTemporary('Say "Hey SOGA" to start', 3000);
-
 
     // const result = await session.audio.playAudio({
     //   audioUrl: this.audioURL
@@ -452,13 +451,20 @@ class ExampleMentraOSApp extends AppServer {
 
 const app = new ExampleMentraOSApp();
 
-// Initialize MongoDB connection
-initializeDatabase().catch((error) => {
-  console.error('[MongoDB] Failed to initialize:', error);
-});
-
-app
-  .start()
+// Connect to both MongoDB connections, then start the server
+// 1. Native MongoDB driver for tasks/agents (mongo.ts)
+// 2. Mongoose for conversation history (connection.ts)
+Promise.all([
+  connectMongo().catch((error) => {
+    console.error("[MongoDB Native] Failed to initialize:", error);
+    console.warn("[MongoDB Native] Continuing without task persistence.");
+  }),
+  initializeDatabase().catch((error) => {
+    console.error("[MongoDB Mongoose] Failed to initialize:", error);
+    console.warn("[MongoDB Mongoose] Continuing without conversation history.");
+  }),
+])
+  .then(() => app.start())
   .then(() => {
     // Set up WebSocket server for daemon connections
     // We need to create a separate HTTP server for WebSocket since MentraOS SDK manages its own

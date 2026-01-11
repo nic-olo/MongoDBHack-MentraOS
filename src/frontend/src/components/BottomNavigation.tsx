@@ -1,5 +1,4 @@
 import { BetweenVerticalEnd, FolderClosed, Settings } from 'lucide-react'
-import React from 'react'
 
 function BottomNavigation() {
   return (

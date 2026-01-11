@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useMentraAuth } from '@mentra/react';
-import Test from './pages/WorkSpace';
+import WorkSpace from './pages/WorkSpace';
 
 export default function App() {
   const { userId, isLoading, error, isAuthenticated } = useMentraAuth();
@@ -24,12 +24,11 @@ export default function App() {
     }
   }, [userId, isLoading, error, isAuthenticated]);
 
-
   // Handle loading state
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--surface-base)' }}>
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           className="flex flex-col items-center gap-6"
@@ -44,7 +43,7 @@ export default function App() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
           </motion.div>
-          <motion.p 
+          <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.2 }}
@@ -62,7 +61,7 @@ export default function App() {
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--surface-base)' }}>
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="text-center p-8 max-w-md"
@@ -72,7 +71,7 @@ export default function App() {
             animate={{ scale: 1 }}
             transition={{ delay: 0.2, type: "spring" }}
             className="w-16 h-16 rounded-2xl mx-auto mb-6 flex items-center justify-center"
-            style={{ 
+            style={{
               backgroundColor: 'var(--color-destructive-500)',
               boxShadow: '0 0 30px rgba(239, 68, 68, 0.3)'
             }}
@@ -91,27 +90,15 @@ export default function App() {
     );
   }
 
-  // Handle unauthenticated state
-  // if (!isAuthenticated || !userId) {
-  //   return (
-  //     <div className="min-h-screen flex items-center justify-center bg-slate-900">
-  //       <div className="text-center p-8">
-  //         <h2 className="text-red-500 text-2xl font-semibold mb-4">Not Authenticated</h2>
-  //         <p className="text-gray-400">Please open this page from the MentraOS manager app.</p>
-  //       </div>
-  //     </div>
-  //   );
-  // }
-
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.5 }}
       className={`min-h-screen ${isDark ? 'dark' : 'light'}`}
       style={{ backgroundColor: 'var(--surface-base)' }}
     >
-      <Test />
+      <WorkSpace userId={userId || 'anonymous'} />
     </motion.div>
   );
 }

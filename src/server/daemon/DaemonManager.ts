@@ -44,6 +44,7 @@
 
 import { EventEmitter } from "events";
 import type { WebSocket } from "ws";
+import { getDb, isConnected } from "../db/mongo";
 import type {
   AgentType,
   AgentStatus,
@@ -79,7 +80,8 @@ export class DaemonManager extends EventEmitter {
   private agents: Map<string, SubAgentState> = new Map();
 
   // Token to daemonId mapping (for auth)
-  private tokenMap: Map<string, { daemonId: string; userId: string }> = new Map();
+  private tokenMap: Map<string, { daemonId: string; userId: string }> =
+    new Map();
 
   // Ping interval for connection health
   private pingInterval: NodeJS.Timeout | null = null;
@@ -105,7 +107,9 @@ export class DaemonManager extends EventEmitter {
    * Authenticate a daemon by token
    * Returns daemonId if valid, null if invalid
    */
-  authenticateDaemon(token: string): { daemonId: string; userId: string } | null {
+  authenticateDaemon(
+    token: string,
+  ): { daemonId: string; userId: string } | null {
     return this.tokenMap.get(token) || null;
   }
 
@@ -167,7 +171,10 @@ export class DaemonManager extends EventEmitter {
 
     // Setup error handler
     ws.on("error", (error) => {
-      console.error(`[DaemonManager] WebSocket error for daemon ${daemonId}:`, error);
+      console.error(
+        `[DaemonManager] WebSocket error for daemon ${daemonId}:`,
+        error,
+      );
     });
   }
 
@@ -192,10 +199,16 @@ export class DaemonManager extends EventEmitter {
           break;
 
         default:
-          console.warn(`[DaemonManager] Unknown message type from daemon ${daemonId}:`, message);
+          console.warn(
+            `[DaemonManager] Unknown message type from daemon ${daemonId}:`,
+            message,
+          );
       }
     } catch (error) {
-      console.error(`[DaemonManager] Failed to parse message from daemon ${daemonId}:`, error);
+      console.error(
+        `[DaemonManager] Failed to parse message from daemon ${daemonId}:`,
+        error,
+      );
     }
   }
 
@@ -204,11 +217,13 @@ export class DaemonManager extends EventEmitter {
    */
   private handleAgentAck(
     daemonId: string,
-    message: { agentId: string; status: "started" | "error"; error?: string }
+    message: { agentId: string; status: "started" | "error"; error?: string },
   ): void {
     const agent = this.agents.get(message.agentId);
     if (!agent) {
-      console.warn(`[DaemonManager] Agent ack for unknown agent: ${message.agentId}`);
+      console.warn(
+        `[DaemonManager] Agent ack for unknown agent: ${message.agentId}`,
+      );
       return;
     }
 
@@ -252,7 +267,10 @@ export class DaemonManager extends EventEmitter {
 
     // Mark all agents from this daemon as failed
     for (const [agentId, agent] of this.agents) {
-      if (agent.daemonId === daemonId && !["completed", "failed", "cancelled"].includes(agent.status)) {
+      if (
+        agent.daemonId === daemonId &&
+        !["completed", "failed", "cancelled"].includes(agent.status)
+      ) {
         agent.status = "failed";
         agent.error = "Daemon disconnected";
         agent.completedAt = new Date();
@@ -296,7 +314,9 @@ export class DaemonManager extends EventEmitter {
   private sendCommand(daemonId: string, command: CloudCommand): boolean {
     const ws = this.connections.get(daemonId);
     if (!ws || ws.readyState !== 1 /* WebSocket.OPEN */) {
-      console.warn(`[DaemonManager] Cannot send command: daemon ${daemonId} not connected`);
+      console.warn(
+        `[DaemonManager] Cannot send command: daemon ${daemonId} not connected`,
+      );
       return false;
     }
 
@@ -304,7 +324,10 @@ export class DaemonManager extends EventEmitter {
       ws.send(JSON.stringify(command));
       return true;
     } catch (error) {
-      console.error(`[DaemonManager] Failed to send command to daemon ${daemonId}:`, error);
+      console.error(
+        `[DaemonManager] Failed to send command to daemon ${daemonId}:`,
+        error,
+      );
       return false;
     }
   }
@@ -313,12 +336,21 @@ export class DaemonManager extends EventEmitter {
    * Spawn an agent on a daemon
    * Returns the agentId if successful, null if failed
    */
-  async spawnAgent(daemonId: string, options: SpawnAgentOptions): Promise<string | null> {
+  async spawnAgent(
+    daemonId: string,
+    options: SpawnAgentOptions,
+  ): Promise<string | null> {
     // Check daemon is online
     if (!this.isDaemonOnline(daemonId)) {
-      console.error(`[DaemonManager] Cannot spawn agent: daemon ${daemonId} not online`);
+      console.error(
+        `[DaemonManager] Cannot spawn agent: daemon ${daemonId} not online`,
+      );
       return null;
     }
+
+    // Get userId from daemon
+    const daemon = this.daemons.get(daemonId);
+    const userId = daemon?.userId || daemonId;
 
     // Generate agent ID
     const agentId = generateId("agent");
@@ -335,6 +367,24 @@ export class DaemonManager extends EventEmitter {
       createdAt: new Date(),
     };
     this.agents.set(agentId, agentState);
+
+    // Persist to MongoDB
+    if (isConnected()) {
+      try {
+        const db = getDb();
+        await db.collection("subagents").insertOne({
+          ...agentState,
+          userId,
+          workingDirectory: options.workingDirectory,
+          updatedAt: new Date(),
+        });
+      } catch (error) {
+        console.error(
+          "[DaemonManager] Failed to persist agent to MongoDB:",
+          error,
+        );
+      }
+    }
 
     // Send spawn command
     const command: CloudCommand = {
@@ -356,7 +406,9 @@ export class DaemonManager extends EventEmitter {
       return null;
     }
 
-    console.log(`[DaemonManager] Spawned agent ${agentId} on daemon ${daemonId}`);
+    console.log(
+      `[DaemonManager] Spawned agent ${agentId} on daemon ${daemonId}`,
+    );
     return agentId;
   }
 
@@ -366,7 +418,9 @@ export class DaemonManager extends EventEmitter {
   async killAgent(agentId: string): Promise<boolean> {
     const agent = this.agents.get(agentId);
     if (!agent) {
-      console.warn(`[DaemonManager] Cannot kill agent: agent ${agentId} not found`);
+      console.warn(
+        `[DaemonManager] Cannot kill agent: agent ${agentId} not found`,
+      );
       return false;
     }
 
@@ -403,10 +457,15 @@ export class DaemonManager extends EventEmitter {
   /**
    * Handle status update from daemon
    */
-  onAgentStatus(agentId: string, payload: StatusUpdatePayload): void {
+  async onAgentStatus(
+    agentId: string,
+    payload: StatusUpdatePayload,
+  ): Promise<void> {
     const agent = this.agents.get(agentId);
     if (!agent) {
-      console.warn(`[DaemonManager] Status update for unknown agent: ${agentId}`);
+      console.warn(
+        `[DaemonManager] Status update for unknown agent: ${agentId}`,
+      );
       return;
     }
 
@@ -414,6 +473,29 @@ export class DaemonManager extends EventEmitter {
     agent.currentStep = payload.currentStep;
     if (payload.notes) {
       agent.notes = payload.notes;
+    }
+
+    // Persist to MongoDB
+    if (isConnected()) {
+      try {
+        const db = getDb();
+        const updateDoc: any = {
+          $set: {
+            status: payload.status,
+            currentStep: payload.currentStep,
+            updatedAt: new Date(),
+          },
+        };
+        if (payload.currentStep) {
+          updateDoc.$push = { notes: payload.currentStep };
+        }
+        await db.collection("subagents").updateOne({ agentId }, updateDoc);
+      } catch (error) {
+        console.error(
+          "[DaemonManager] Failed to update agent status in MongoDB:",
+          error,
+        );
+      }
     }
 
     this.emitEvent({
@@ -428,7 +510,10 @@ export class DaemonManager extends EventEmitter {
   /**
    * Handle completion from daemon
    */
-  onAgentComplete(agentId: string, payload: CompletePayload): void {
+  async onAgentComplete(
+    agentId: string,
+    payload: CompletePayload,
+  ): Promise<void> {
     const agent = this.agents.get(agentId);
     if (!agent) {
       console.warn(`[DaemonManager] Complete for unknown agent: ${agentId}`);
@@ -440,6 +525,31 @@ export class DaemonManager extends EventEmitter {
     agent.error = payload.error;
     agent.executionTimeMs = payload.executionTimeMs;
     agent.completedAt = new Date();
+
+    // Persist to MongoDB
+    if (isConnected()) {
+      try {
+        const db = getDb();
+        await db.collection("subagents").updateOne(
+          { agentId },
+          {
+            $set: {
+              status: payload.status,
+              result: payload.result,
+              error: payload.error,
+              executionTimeMs: payload.executionTimeMs,
+              completedAt: new Date(),
+              updatedAt: new Date(),
+            },
+          },
+        );
+      } catch (error) {
+        console.error(
+          "[DaemonManager] Failed to update agent completion in MongoDB:",
+          error,
+        );
+      }
+    }
 
     if (payload.status === "completed") {
       this.emitEvent({
@@ -508,7 +618,7 @@ export class DaemonManager extends EventEmitter {
    */
   getOnlineDaemonForUser(userId: string): DaemonState | undefined {
     return Array.from(this.daemons.values()).find(
-      (d) => d.userId === userId && d.status === "online"
+      (d) => d.userId === userId && d.status === "online",
     );
   }
 
@@ -523,14 +633,69 @@ export class DaemonManager extends EventEmitter {
    * Get all agents for a daemon
    */
   getAgentsForDaemon(daemonId: string): SubAgentState[] {
-    return Array.from(this.agents.values()).filter((a) => a.daemonId === daemonId);
+    return Array.from(this.agents.values()).filter(
+      (a) => a.daemonId === daemonId,
+    );
   }
 
   /**
    * Get all agents for a session
    */
   getAgentsForSession(sessionId: string): SubAgentState[] {
-    return Array.from(this.agents.values()).filter((a) => a.sessionId === sessionId);
+    return Array.from(this.agents.values()).filter(
+      (a) => a.sessionId === sessionId,
+    );
+  }
+
+  /**
+   * Wait for an agent to complete (poll MongoDB)
+   * Returns the agent state when complete, or null on timeout
+   */
+  async waitForCompletion(
+    agentId: string,
+    timeoutMs: number = 300000,
+  ): Promise<SubAgentState | null> {
+    const pollInterval = 1000; // 1 second
+    const maxAttempts = timeoutMs / pollInterval;
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+      // Check in-memory first
+      const agent = this.agents.get(agentId);
+      if (agent) {
+        if (
+          agent.status === "completed" ||
+          agent.status === "failed" ||
+          agent.status === "cancelled"
+        ) {
+          return agent;
+        }
+      }
+
+      // Also check MongoDB if connected
+      if (isConnected()) {
+        try {
+          const db = getDb();
+          const doc = await db.collection("subagents").findOne({ agentId });
+          if (doc) {
+            if (
+              doc.status === "completed" ||
+              doc.status === "failed" ||
+              doc.status === "cancelled"
+            ) {
+              return doc as unknown as SubAgentState;
+            }
+          }
+        } catch (error) {
+          console.error("[DaemonManager] Error polling MongoDB:", error);
+        }
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+      attempts++;
+    }
+
+    return null; // Timeout
   }
 
   // ===========================================================================

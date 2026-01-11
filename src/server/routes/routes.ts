@@ -16,14 +16,19 @@
  * - GET /api/latest-photo - Get metadata for the latest photo
  * - GET /api/photo/:requestId - Get the actual photo image data
  * - GET /api/photo-base64/:requestId - Get photo as base64 JSON
+ * - POST /api/master-agent/query - Submit query to MasterAgent
+ * - GET /api/master-agent/task/:taskId - Get task status/result
  *
  * Note: The React frontend is served from the root route by index.ts
  *
  * =============================================================================
  */
 
-import { Express, Response } from 'express';
-import { setupConversationRoutes } from './conversation.routes.js';
+import { Express, Response } from "express";
+import { getDb, isConnected } from "../db/mongo";
+import { getMasterAgent } from "../master-agent";
+import { getConversationService } from "../conversation";
+import { setupConversationRoutes } from "./conversation.routes.js";
 
 // Store SSE clients with userId mapping
 interface SSEClient {
@@ -37,7 +42,6 @@ const transcriptionClients: Set<SSEClient> = new Set();
 // Store active sessions for audio playback
 const activeSessions: Map<string, any> = new Map();
 
-
 interface StoredPhoto {
   requestId: string;
   buffer: Buffer;
@@ -48,12 +52,11 @@ interface StoredPhoto {
   size: number;
 }
 
-
 /**
  * Helper function to broadcast photo to specific user's SSE clients
  */
 export function broadcastPhotoToClients(photo: StoredPhoto): void {
-  const base64Data = photo.buffer.toString('base64');
+  const base64Data = photo.buffer.toString("base64");
   const photoData = {
     requestId: photo.requestId,
     timestamp: photo.timestamp.getTime(),
@@ -62,12 +65,12 @@ export function broadcastPhotoToClients(photo: StoredPhoto): void {
     size: photo.size,
     userId: photo.userId,
     base64: base64Data,
-    dataUrl: `data:${photo.mimeType};base64,${base64Data}`
+    dataUrl: `data:${photo.mimeType};base64,${base64Data}`,
   };
 
   const message = `data: ${JSON.stringify(photoData)}\n\n`;
 
-  sseClients.forEach(client => {
+  sseClients.forEach((client) => {
     // Only send to clients belonging to this user
     if (client.userId === photo.userId) {
       try {
@@ -83,17 +86,21 @@ export function broadcastPhotoToClients(photo: StoredPhoto): void {
 /**
  * Helper function to broadcast transcription to specific user's SSE clients
  */
-export function broadcastTranscriptionToClients(text: string, isFinal: boolean, userId: string): void {
+export function broadcastTranscriptionToClients(
+  text: string,
+  isFinal: boolean,
+  userId: string,
+): void {
   const transcriptionData = {
     text,
     isFinal,
     timestamp: Date.now(),
-    userId
+    userId,
   };
 
   const message = `data: ${JSON.stringify(transcriptionData)}\n\n`;
 
-  transcriptionClients.forEach(client => {
+  transcriptionClients.forEach((client) => {
     // Only send to clients belonging to this user
     if (client.userId === userId) {
       try {
@@ -125,29 +132,28 @@ export function unregisterSession(userId: string): void {
  */
 export function setupWebviewRoutes(
   app: Express,
-  photosMap: Map<string, StoredPhoto>
+  photosMap: Map<string, StoredPhoto>,
 ): void {
-
   // Setup conversation history routes
   setupConversationRoutes(app);
 
   // SSE Route: Real-time photo stream
-  app.get('/api/photo-stream', (req: any, res: any) => {
+  app.get("/api/photo-stream", (req: any, res: any) => {
     // Get userId from query parameter
     const userId = req.query.userId as string;
 
     if (!userId) {
-      res.status(400).json({ error: 'userId is required' });
+      res.status(400).json({ error: "userId is required" });
       return;
     }
 
     console.log(`[SSE Photo] Client connected for user: ${userId}`);
 
     // Set up SSE headers
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("Access-Control-Allow-Origin", "*");
 
     // Create client object
     const client: SSEClient = { response: res, userId };
@@ -156,12 +162,12 @@ export function setupWebviewRoutes(
     sseClients.add(client);
 
     // Send initial connection message
-    res.write(`data: ${JSON.stringify({ type: 'connected', userId })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: "connected", userId })}\n\n`);
 
     // Send existing photos for this user
     photosMap.forEach((photo) => {
       if (photo.userId === userId) {
-        const base64Data = photo.buffer.toString('base64');
+        const base64Data = photo.buffer.toString("base64");
         const photoData = {
           requestId: photo.requestId,
           timestamp: photo.timestamp.getTime(),
@@ -170,36 +176,36 @@ export function setupWebviewRoutes(
           size: photo.size,
           userId: photo.userId,
           base64: base64Data,
-          dataUrl: `data:${photo.mimeType};base64,${base64Data}`
+          dataUrl: `data:${photo.mimeType};base64,${base64Data}`,
         };
         res.write(`data: ${JSON.stringify(photoData)}\n\n`);
       }
     });
 
     // Handle client disconnect
-    req.on('close', () => {
+    req.on("close", () => {
       console.log(`[SSE Photo] Client disconnected for user: ${userId}`);
       sseClients.delete(client);
     });
   });
 
   // SSE Route: Real-time transcription stream
-  app.get('/api/transcription-stream', (req: any, res: any) => {
+  app.get("/api/transcription-stream", (req: any, res: any) => {
     // Get userId from query parameter
     const userId = req.query.userId as string;
 
     if (!userId) {
-      res.status(400).json({ error: 'userId is required' });
+      res.status(400).json({ error: "userId is required" });
       return;
     }
 
     console.log(`[SSE Transcription] Client connected for user: ${userId}`);
 
     // Set up SSE headers
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("Access-Control-Allow-Origin", "*");
 
     // Create client object
     const client: SSEClient = { response: res, userId };
@@ -208,27 +214,29 @@ export function setupWebviewRoutes(
     transcriptionClients.add(client);
 
     // Send initial connection message
-    res.write(`data: ${JSON.stringify({ type: 'connected', userId })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: "connected", userId })}\n\n`);
 
     // Handle client disconnect
-    req.on('close', () => {
-      console.log(`[SSE Transcription] Client disconnected for user: ${userId}`);
+    req.on("close", () => {
+      console.log(
+        `[SSE Transcription] Client disconnected for user: ${userId}`,
+      );
       transcriptionClients.delete(client);
     });
   });
 
   // Route: Play audio from URL
-  app.post('/api/play-audio', async (req: any, res: any) => {
+  app.post("/api/play-audio", async (req: any, res: any) => {
     try {
       const { audioUrl, userId } = req.body;
 
       if (!audioUrl) {
-        res.status(400).json({ error: 'audioUrl is required' });
+        res.status(400).json({ error: "audioUrl is required" });
         return;
       }
 
       if (!userId) {
-        res.status(400).json({ error: 'userId is required' });
+        res.status(400).json({ error: "userId is required" });
         return;
       }
 
@@ -247,24 +255,29 @@ export function setupWebviewRoutes(
       const result = await session.audio.playAudio({ audioUrl });
       console.log(`[Audio] Play audio result:`, result);
 
-      res.json({ success: true, message: 'Audio playback started', userId, audioUrl });
+      res.json({
+        success: true,
+        message: "Audio playback started",
+        userId,
+        audioUrl,
+      });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
 
   // Route: Text-to-speech
-  app.post('/api/speak', async (req: any, res: any) => {
+  app.post("/api/speak", async (req: any, res: any) => {
     try {
       const { text, userId } = req.body;
 
       if (!text) {
-        res.status(400).json({ error: 'text is required' });
+        res.status(400).json({ error: "text is required" });
         return;
       }
 
       if (!userId) {
-        res.status(400).json({ error: 'userId is required' });
+        res.status(400).json({ error: "userId is required" });
         return;
       }
 
@@ -281,19 +294,19 @@ export function setupWebviewRoutes(
       // Speak the text
       await session.audio.speak(text);
 
-      res.json({ success: true, message: 'Text-to-speech started', userId });
+      res.json({ success: true, message: "Text-to-speech started", userId });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
 
   // Route: Stop audio
-  app.post('/api/stop-audio', async (req: any, res: any) => {
+  app.post("/api/stop-audio", async (req: any, res: any) => {
     try {
       const { userId } = req.body;
 
       if (!userId) {
-        res.status(400).json({ error: 'userId is required' });
+        res.status(400).json({ error: "userId is required" });
         return;
       }
 
@@ -310,34 +323,31 @@ export function setupWebviewRoutes(
       // Stop the audio
       await session.audio.stopAudio();
 
-      res.json({ success: true, message: 'Audio stopped', userId });
+      res.json({ success: true, message: "Audio stopped", userId });
     } catch (error: any) {
-      console.error('Error stopping audio:', error);
+      console.error("Error stopping audio:", error);
       res.status(500).json({ error: error.message });
     }
   });
 
-
-
   // Route: Set theme preference in Simple Storage
 
-
   // Route 1: Get the latest photo metadata for a specific user
-  app.get('/api/latest-photo', (req: any, res: any) => {
+  app.get("/api/latest-photo", (req: any, res: any) => {
     const userId = req.query.userId as string;
 
     if (!userId) {
-      res.status(400).json({ error: 'userId is required' });
+      res.status(400).json({ error: "userId is required" });
       return;
     }
 
     // Find the most recent photo for this user
     const userPhotos = Array.from(photosMap.values())
-      .filter(photo => photo.userId === userId)
+      .filter((photo) => photo.userId === userId)
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
     if (userPhotos.length === 0) {
-      res.status(404).json({ error: 'No photos available for this user' });
+      res.status(404).json({ error: "No photos available for this user" });
       return;
     }
 
@@ -347,68 +357,69 @@ export function setupWebviewRoutes(
       requestId: latestPhoto.requestId,
       timestamp: latestPhoto.timestamp.getTime(),
       userId: latestPhoto.userId,
-      hasPhoto: true
+      hasPhoto: true,
     });
   });
 
-
-
   // Route 2: Get the actual photo image data
-  app.get('/api/photo/:requestId', (req: any, res: any) => {
+  app.get("/api/photo/:requestId", (req: any, res: any) => {
     const requestId = req.params.requestId;
     const userId = req.query.userId as string;
 
     if (!userId) {
-      res.status(400).json({ error: 'userId is required' });
+      res.status(400).json({ error: "userId is required" });
       return;
     }
 
     const photo = photosMap.get(requestId);
 
     if (!photo) {
-      res.status(404).json({ error: 'Photo not found' });
+      res.status(404).json({ error: "Photo not found" });
       return;
     }
 
     // Verify this photo belongs to the requesting user
     if (photo.userId !== userId) {
-      res.status(403).json({ error: 'Access denied: photo belongs to different user' });
+      res
+        .status(403)
+        .json({ error: "Access denied: photo belongs to different user" });
       return;
     }
 
     res.set({
-      'Content-Type': photo.mimeType,
-      'Cache-Control': 'no-cache'
+      "Content-Type": photo.mimeType,
+      "Cache-Control": "no-cache",
     });
 
     res.send(photo.buffer);
   });
 
-
   // Route 3: Get photo as base64 JSON
-  app.get('/api/photo-base64/:requestId', (req: any, res: any) => {
+  app.get("/api/photo-base64/:requestId", (req: any, res: any) => {
     const requestId = req.params.requestId;
     const userId = req.query.userId as string;
 
     if (!userId) {
-      res.status(400).json({ error: 'userId is required' });
+      res.status(400).json({ error: "userId is required" });
       return;
     }
 
     const photo = photosMap.get(requestId);
 
     if (!photo) {
-      res.status(404).json({ error: 'Photo not found' });
+      res.status(404).json({ error: "Photo not found" });
       return;
     }
 
     // Verify this photo belongs to the requesting user
     if (photo.userId !== userId) {
-      res.status(403).json({ error: 'Access denied: photo belongs to different user' });
+      res
+        .status(403)
+        .json({ error: "Access denied: photo belongs to different user" });
       return;
     }
 
-    const base64Data = photo.buffer.toString('base64');
+    const base64Data = photo.buffer.toString("base64");
 
     res.json({
       requestId: photo.requestId,
@@ -418,110 +429,137 @@ export function setupWebviewRoutes(
       size: photo.size,
       userId: photo.userId,
       base64: base64Data,
-      dataUrl: `data:${photo.mimeType};base64,${base64Data}`
+      dataUrl: `data:${photo.mimeType};base64,${base64Data}`,
     });
   });
 
-  // Master Agent Server Configuration
-  const MASTER_AGENT_URL = process.env.MASTER_AGENT_URL || 'http://localhost:3001';
+  // ==========================================================================
+  // Master Agent Routes (Direct - No Proxy)
+  // ==========================================================================
 
   /**
    * Route: Submit query to Master Agent (returns task ID)
    * POST /api/master-agent/query
+   *
+   * This route:
+   * 1. Creates a task in MongoDB
+   * 2. Returns taskId immediately (non-blocking)
+   * 3. Processes the query in the background with MasterAgent
+   * 4. Client polls GET /api/master-agent/task/:taskId for result
    */
-  app.post('/api/master-agent/query', async (req: any, res: any) => {
+  app.post("/api/master-agent/query", async (req: any, res: any) => {
     try {
       const { userId, query } = req.body;
 
       // Validation: Required fields
       if (!userId) {
         return res.status(400).json({
-          error: 'userId is required',
-          code: 'MISSING_USER_ID'
+          error: "userId is required",
+          code: "MISSING_USER_ID",
         });
       }
 
       if (!query) {
         return res.status(400).json({
-          error: 'query is required',
-          code: 'MISSING_QUERY'
+          error: "query is required",
+          code: "MISSING_QUERY",
         });
       }
 
       // Validation: Type and content
-      if (typeof userId !== 'string' || userId.trim() === '') {
+      if (typeof userId !== "string" || userId.trim() === "") {
         return res.status(400).json({
-          error: 'userId must be a non-empty string',
-          code: 'INVALID_USER_ID'
+          error: "userId must be a non-empty string",
+          code: "INVALID_USER_ID",
         });
       }
 
-      if (typeof query !== 'string' || query.trim() === '') {
+      if (typeof query !== "string" || query.trim() === "") {
         return res.status(400).json({
-          error: 'query must be a non-empty string',
-          code: 'INVALID_QUERY'
+          error: "query must be a non-empty string",
+          code: "INVALID_QUERY",
         });
       }
 
       // Validation: Length limit
-      const MAX_QUERY_LENGTH = 2000;
+      const MAX_QUERY_LENGTH = 4000;
       if (query.length > MAX_QUERY_LENGTH) {
         return res.status(400).json({
           error: `query must not exceed ${MAX_QUERY_LENGTH} characters`,
-          code: 'QUERY_TOO_LONG',
-          userId
+          code: "QUERY_TOO_LONG",
+          userId,
+        });
+      }
+
+      // Check MongoDB connection
+      if (!isConnected()) {
+        return res.status(503).json({
+          error: "Database not connected",
+          code: "DB_NOT_CONNECTED",
         });
       }
 
       const sanitizedQuery = query.trim();
       const sanitizedUserId = userId.trim();
 
-      console.log(`[Master Agent API] Submitting query from user ${sanitizedUserId}`);
+      console.log(
+        `[Master Agent API] Submitting query from user ${sanitizedUserId}`,
+      );
+      console.log(`[Master Agent API] Query: "${sanitizedQuery}"`);
 
-      // Forward to Master Agent server
-      const response = await fetch(`${MASTER_AGENT_URL}/agent/query`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: sanitizedQuery })
+      // Get or create conversation for this user
+      const conversationService = getConversationService();
+      const conversation =
+        await conversationService.getOrCreateConversation(sanitizedUserId);
+
+      // Generate task ID
+      const taskId = `task_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+      // Create task in MongoDB
+      const db = getDb();
+      await db.collection("tasks").insertOne({
+        taskId,
+        userId: sanitizedUserId,
+        conversationId: conversation.conversationId,
+        query: sanitizedQuery,
+        status: "processing",
+        agentSpawned: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        return res.status(response.status).json({
-          error: 'Master Agent service error',
-          code: 'MASTER_AGENT_ERROR',
-          message: errorData.error || errorData.message,
-          userId: sanitizedUserId
-        });
-      }
+      // Add user message to conversation
+      await conversationService.addUserMessage(
+        conversation.conversationId,
+        sanitizedQuery,
+      );
 
-      const data = await response.json();
-
-      // Return task ID to frontend with userId
+      // Return task ID immediately (non-blocking)
       res.json({
         success: true,
-        task_id: data.task_id,
-        status: data.status,
-        message: data.message,
-        userId: sanitizedUserId
+        task_id: taskId,
+        status: "processing",
+        message: "Master Agent is processing your query",
+        userId: sanitizedUserId,
       });
 
-    } catch (error: any) {
-      console.error('[Master Agent API] Error:', error);
-
-      // Check if Master Agent server is unreachable
-      if (error.code === 'ECONNREFUSED') {
-        return res.status(503).json({
-          error: 'Master Agent service is not available',
-          code: 'SERVICE_UNAVAILABLE',
-          message: 'Master Agent server is not running. Start it with: bun run dev:agent'
+      // Process query in background (don't await)
+      const masterAgent = getMasterAgent(sanitizedUserId);
+      masterAgent
+        .processQuery(taskId, sanitizedQuery, conversation.conversationId)
+        .catch((error) => {
+          console.error(
+            `[Master Agent API] Background processing error for task ${taskId}:`,
+            error,
+          );
         });
-      }
+    } catch (error: any) {
+      console.error("[Master Agent API] Error:", error);
 
       res.status(500).json({
-        error: 'Internal server error',
-        code: 'INTERNAL_ERROR',
-        message: error.message || String(error)
+        error: "Internal server error",
+        code: "INTERNAL_ERROR",
+        message: error.message || String(error),
       });
     }
   });
@@ -530,58 +568,67 @@ export function setupWebviewRoutes(
    * Route: Get task status and results
    * GET /api/master-agent/task/:taskId
    */
-  app.get('/api/master-agent/task/:taskId', async (req: any, res: any) => {
+  app.get("/api/master-agent/task/:taskId", async (req: any, res: any) => {
     try {
       const { taskId } = req.params;
       const userId = req.query.userId as string;
 
       if (!userId) {
         return res.status(400).json({
-          error: 'userId is required',
-          code: 'MISSING_USER_ID'
+          error: "userId is required",
+          code: "MISSING_USER_ID",
         });
       }
 
-      console.log(`[Master Agent API] Checking task ${taskId} for user ${userId}`);
-
-      // Forward to Master Agent server
-      const response = await fetch(`${MASTER_AGENT_URL}/agent/task/${taskId}`);
-
-      if (!response.ok) {
-        if (response.status === 404) {
-          return res.status(404).json({
-            error: 'Task not found',
-            code: 'TASK_NOT_FOUND',
-            task_id: taskId
-          });
-        }
-
-        const errorData = await response.json();
-        return res.status(response.status).json(errorData);
-      }
-
-      const data = await response.json();
-
-      // Include userId in response
-      res.json({
-        ...data,
-        userId
-      });
-
-    } catch (error: any) {
-      console.error('[Master Agent API] Error:', error);
-
-      if (error.code === 'ECONNREFUSED') {
+      // Check MongoDB connection
+      if (!isConnected()) {
         return res.status(503).json({
-          error: 'Master Agent service is not available',
-          code: 'SERVICE_UNAVAILABLE'
+          error: "Database not connected",
+          code: "DB_NOT_CONNECTED",
         });
       }
+
+      // Get task from MongoDB
+      const db = getDb();
+      const task = await db.collection("tasks").findOne({ taskId });
+
+      if (!task) {
+        return res.status(404).json({
+          error: "Task not found",
+          code: "TASK_NOT_FOUND",
+          task_id: taskId,
+        });
+      }
+
+      // Verify task belongs to user
+      if (task.userId !== userId) {
+        return res.status(403).json({
+          error: "Access denied",
+          code: "ACCESS_DENIED",
+          task_id: taskId,
+        });
+      }
+
+      // Return task data
+      res.json({
+        taskId: task.taskId,
+        query: task.query,
+        status: task.status,
+        result: task.result,
+        error: task.error,
+        processingTimeMs: task.processingTimeMs,
+        agentSpawned: task.agentSpawned,
+        createdAt: task.createdAt,
+        completedAt: task.completedAt,
+        userId: task.userId,
+      });
+    } catch (error: any) {
+      console.error("[Master Agent API] Error:", error);
 
       res.status(500).json({
-        error: 'Internal server error',
-        code: 'INTERNAL_ERROR',
-        message: error.message || String(error)
+        error: "Internal server error",
+        code: "INTERNAL_ERROR",
+        message: error.message || String(error),
       });
     }
   });
@@ -590,88 +637,87 @@ export function setupWebviewRoutes(
    * Route: Health check for Master Agent
    * GET /api/master-agent/health
    */
-  app.get('/api/master-agent/health', async (_req: any, res: any) => {
-    try {
-      const response = await fetch(`${MASTER_AGENT_URL}/health`);
-      const data = await response.json();
-      res.json(data);
-    } catch (error: any) {
-      res.status(503).json({
-        status: 'unhealthy',
-        error: 'Master Agent service is not reachable',
-        code: 'SERVICE_UNAVAILABLE'
-      });
-    }
+  app.get("/api/master-agent/health", async (_req: any, res: any) => {
+    const dbConnected = isConnected();
+
+    res.json({
+      status: dbConnected ? "healthy" : "degraded",
+      service: "Master Agent (integrated)",
+      database: dbConnected ? "connected" : "disconnected",
+      timestamp: new Date().toISOString(),
+    });
   });
 
   /**
    * Route: Query agent status from DaemonManager
    * POST /api/master-agent/agent-status
-   * 
+   *
    * This endpoint queries the status of agents managed by the DaemonManager.
    * The query is processed by the Master Agent to provide intelligent status summaries.
    */
-  app.post('/api/master-agent/agent-status', async (req: any, res: any) => {
+  app.post("/api/master-agent/agent-status", async (req: any, res: any) => {
     try {
       const { userId, query } = req.body;
 
       // Validation: Required fields
       if (!userId) {
         return res.status(400).json({
-          error: 'userId is required',
-          code: 'MISSING_USER_ID'
+          error: "userId is required",
+          code: "MISSING_USER_ID",
         });
       }
 
       if (!query) {
         return res.status(400).json({
-          error: 'query is required',
-          code: 'MISSING_QUERY'
+          error: "query is required",
+          code: "MISSING_QUERY",
         });
       }
 
       // Validation: Type and content
-      if (typeof userId !== 'string' || userId.trim() === '') {
+      if (typeof userId !== "string" || userId.trim() === "") {
         return res.status(400).json({
-          error: 'userId must be a non-empty string',
-          code: 'INVALID_USER_ID'
+          error: "userId must be a non-empty string",
+          code: "INVALID_USER_ID",
         });
       }
 
-      if (typeof query !== 'string' || query.trim() === '') {
+      if (typeof query !== "string" || query.trim() === "") {
         return res.status(400).json({
-          error: 'query must be a non-empty string',
-          code: 'INVALID_QUERY'
+          error: "query must be a non-empty string",
+          code: "INVALID_QUERY",
         });
       }
 
       const sanitizedQuery = query.trim();
       const sanitizedUserId = userId.trim();
 
-      console.log(`[Agent Status API] Querying agent status for user ${sanitizedUserId}: "${sanitizedQuery}"`);
+      console.log(
+        `[Agent Status API] Querying agent status for user ${sanitizedUserId}: "${sanitizedQuery}"`,
+      );
 
       // Get DaemonManager instance
-      const { getDaemonManager } = await import('../daemon');
+      const { getDaemonManager } = await import("../daemon");
       const daemonManager = getDaemonManager();
 
       // Get all daemons for this user
       const userDaemons = daemonManager.getDaemonsForUser(sanitizedUserId);
 
       // Get all agents across all user's daemons
-      const allAgents = userDaemons.flatMap(daemon => 
-        daemonManager.getAgentsForDaemon(daemon.daemonId)
+      const allAgents = userDaemons.flatMap((daemon) =>
+        daemonManager.getAgentsForDaemon(daemon.daemonId),
       );
 
       // Build context for Master Agent
       const statusContext = {
-        daemons: userDaemons.map(d => ({
+        daemons: userDaemons.map((d) => ({
           daemonId: d.daemonId,
           name: d.name,
           status: d.status,
           lastSeen: d.lastSeen,
-          activeAgents: d.activeAgents
+          activeAgents: d.activeAgents,
         })),
-        agents: allAgents.map(a => ({
+        agents: allAgents.map((a) => ({
           agentId: a.agentId,
           type: a.type,
           status: a.status,
@@ -683,16 +729,17 @@ export function setupWebviewRoutes(
           executionTimeMs: a.executionTimeMs,
           createdAt: a.createdAt,
           startedAt: a.startedAt,
-          completedAt: a.completedAt
+          completedAt: a.completedAt,
         })),
         totalDaemons: userDaemons.length,
-        onlineDaemons: userDaemons.filter(d => d.status === 'online').length,
+        onlineDaemons: userDaemons.filter((d) => d.status === "online").length,
         totalAgents: allAgents.length,
-        activeAgents: allAgents.filter(a => 
-          a.status === 'running' || a.status === 'initializing'
+        activeAgents: allAgents.filter(
+          (a) => a.status === "running" || a.status === "initializing",
         ).length,
-        completedAgents: allAgents.filter(a => a.status === 'completed').length,
-        failedAgents: allAgents.filter(a => a.status === 'failed').length
+        completedAgents: allAgents.filter((a) => a.status === "completed")
+          .length,
+        failedAgents: allAgents.filter((a) => a.status === "failed").length,
       };
 
       // Build enhanced query for Master Agent with status context
@@ -702,63 +749,68 @@ User Query: ${sanitizedQuery}
 AGENT STATUS CONTEXT:
 ${JSON.stringify(statusContext, null, 2)}
 
-Please analyze the agent status data above and respond to the user's query about agent status. 
+Please analyze the agent status data above and respond to the user's query about agent status.
 Provide a clear, concise summary with relevant details about daemon and agent states.
 `;
 
-      console.log(`[Agent Status API] Found ${statusContext.totalAgents} agents for user`);
+      console.log(
+        `[Agent Status API] Found ${statusContext.totalAgents} agents for user`,
+      );
 
-      // Forward to Master Agent server with enhanced context
-      const response = await fetch(`${MASTER_AGENT_URL}/agent/query`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: enhancedQuery })
+      // Generate task ID for this status query
+      const taskId = `task_status_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+      // Get or create a conversation for this user's status queries
+      const conversationService = getConversationService();
+      const statusConversation =
+        await conversationService.getOrCreateConversation(sanitizedUserId);
+
+      // Store task in database
+      const db = getDb();
+      await db.collection("tasks").insertOne({
+        taskId,
+        userId: sanitizedUserId,
+        conversationId: statusConversation.conversationId,
+        query: enhancedQuery,
+        status: "processing",
+        agentSpawned: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        return res.status(response.status).json({
-          error: 'Master Agent service error',
-          code: 'MASTER_AGENT_ERROR',
-          message: errorData.error || errorData.message,
-          userId: sanitizedUserId
-        });
-      }
-
-      const data = await response.json();
-
-      // Return task ID to frontend with userId and status context
+      // Return task ID immediately (non-blocking)
       res.json({
         success: true,
-        task_id: data.task_id,
-        status: data.status,
-        message: data.message,
+        task_id: taskId,
+        status: "processing",
+        message: "Analyzing agent status...",
         userId: sanitizedUserId,
         statusSummary: {
           totalAgents: statusContext.totalAgents,
           activeAgents: statusContext.activeAgents,
           completedAgents: statusContext.completedAgents,
           failedAgents: statusContext.failedAgents,
-          onlineDaemons: statusContext.onlineDaemons
-        }
+          onlineDaemons: statusContext.onlineDaemons,
+        },
       });
 
-    } catch (error: any) {
-      console.error('[Agent Status API] Error:', error);
-
-      // Check if Master Agent server is unreachable
-      if (error.code === 'ECONNREFUSED') {
-        return res.status(503).json({
-          error: 'Master Agent service is not available',
-          code: 'SERVICE_UNAVAILABLE',
-          message: 'Master Agent server is not running. Start it with: bun run dev:agent'
+      // Process query in background using integrated MasterAgent
+      const masterAgent = getMasterAgent(sanitizedUserId);
+      masterAgent
+        .processQuery(taskId, enhancedQuery, statusConversation.conversationId)
+        .catch((error) => {
+          console.error(
+            `[Agent Status API] Background processing error for task ${taskId}:`,
+            error,
+          );
         });
-      }
+    } catch (error: any) {
+      console.error("[Agent Status API] Error:", error);
 
       res.status(500).json({
-        error: 'Internal server error',
-        code: 'INTERNAL_ERROR',
-        message: error.message || String(error)
+        error: "Internal server error",
+        code: "INTERNAL_ERROR",
+        message: error.message || String(error),
       });
     }
   });
@@ -770,40 +822,68 @@ Provide a clear, concise summary with relevant details about daemon and agent st
 /**
  * Helper function to call Master Agent from transcription/voice commands
  * Returns the task ID immediately for async processing
+ *
+ * Now uses integrated MasterAgent directly (no external server)
  */
 export async function callMasterAgentFromVoice(
-  _userId: string,
+  userId: string,
   query: string,
-  onProgress?: (message: string) => void
+  onProgress?: (message: string) => void,
 ): Promise<string> {
-  const MASTER_AGENT_URL = process.env.MASTER_AGENT_URL || 'http://localhost:3001';
-
   try {
-    console.log(`[Master Agent Voice] 📡 Sending HTTP POST to ${MASTER_AGENT_URL}/agent/query`);
+    console.log(`[Master Agent Voice] 📡 Processing query directly`);
+    console.log(`[Master Agent Voice] 👤 User: ${userId}`);
     console.log(`[Master Agent Voice] 📝 Query: "${query}"`);
-    if (onProgress) onProgress('Processing your command...');
+    if (onProgress) onProgress("Processing your command...");
 
-    // Submit query to Master Agent
-    const response = await fetch(`${MASTER_AGENT_URL}/agent/query`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query })
-    });
-
-    console.log(`[Master Agent Voice] 📨 Response status: ${response.status} ${response.statusText}`);
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('[Master Agent Voice] ❌ Error response from Master Agent:', errorData);
-      throw new Error(errorData.error || errorData.message || 'Master Agent request failed');
+    // Check MongoDB connection
+    if (!isConnected()) {
+      throw new Error("Database not connected");
     }
 
-    const data = await response.json();
-    console.log(`[Master Agent Voice] ✅ Task successfully created with ID: ${data.task_id}`);
-    console.log(`[Master Agent Voice] 📊 Task status: ${data.status}`);
-    return data.task_id;
+    // Get or create conversation
+    const conversationService = getConversationService();
+    const conversation =
+      await conversationService.getOrCreateConversation(userId);
+
+    // Generate task ID
+    const taskId = `task_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+    // Create task in MongoDB
+    const db = getDb();
+    await db.collection("tasks").insertOne({
+      taskId,
+      userId,
+      conversationId: conversation.conversationId,
+      query,
+      status: "processing",
+      agentSpawned: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    // Add user message to conversation
+    await conversationService.addUserMessage(
+      conversation.conversationId,
+      query,
+    );
+
+    console.log(`[Master Agent Voice] ✅ Task created with ID: ${taskId}`);
+
+    // Process query in background (don't await)
+    const masterAgent = getMasterAgent(userId);
+    masterAgent
+      .processQuery(taskId, query, conversation.conversationId)
+      .catch((error) => {
+        console.error(
+          `[Master Agent Voice] Background processing error for task ${taskId}:`,
+          error,
+        );
+      });
+
+    return taskId;
   } catch (error: any) {
-    console.error('[Master Agent Voice] ❌ Exception caught:', error);
+    console.error("[Master Agent Voice] ❌ Exception caught:", error);
     throw error;
   }
 }
@@ -818,21 +898,19 @@ export async function pollAndSpeakResult(
   userId: string,
   session: any,
   logger?: any,
-  glassesDisplay?: any
+  glassesDisplay?: any,
 ): Promise<void> {
-  const MASTER_AGENT_URL = process.env.MASTER_AGENT_URL || 'http://localhost:3001';
-  const maxAttempts = 60; // 2 minutes max
+  const maxAttempts = 150; // 5 minutes max (at 2s intervals)
   let attempts = 0;
 
   const log = logger || console;
 
-  console.log('\n========================================');
-  console.log('🔄 STARTING TASK POLLING');
+  console.log("\n========================================");
+  console.log("🔄 STARTING TASK POLLING");
   console.log(`Task ID: ${taskId}`);
   console.log(`User: ${userId}`);
-  console.log(`Polling URL: ${MASTER_AGENT_URL}/agent/task/${taskId}`);
-  console.log(`Max attempts: ${maxAttempts} (2 minutes)`);
-  console.log('========================================\n');
+  console.log(`Max attempts: ${maxAttempts} (5 minutes)`);
+  console.log("========================================\n");
 
   while (attempts < maxAttempts) {
     try {
@@ -840,50 +918,69 @@ export async function pollAndSpeakResult(
       console.log(`[Poll #${attempts}] 🔍 Checking task status...`);
 
       // Show polling progress on glasses
-      if (glassesDisplay && attempts % 3 === 0) { // Update every 3 polls (6 seconds)
+      if (glassesDisplay && attempts % 3 === 0) {
+        // Update every 3 polls (6 seconds)
         await glassesDisplay.showPollingStatus(attempts, maxAttempts);
       }
 
-      const response = await fetch(`${MASTER_AGENT_URL}/agent/task/${taskId}`);
-
-      if (!response.ok) {
-        console.log(`[Poll #${attempts}] ❌ HTTP error: ${response.status}`);
-        log.error(`[Master Agent Voice] Failed to get task status: ${response.status}`);
+      // Check MongoDB connection
+      if (!isConnected()) {
+        console.log(`[Poll #${attempts}] ❌ Database not connected`);
+        log.error(`[Master Agent Voice] Database not connected`);
         if (glassesDisplay) {
-          await glassesDisplay.showError('Failed to check status');
+          await glassesDisplay.showError("Database not connected");
 
           // Clear display after 5 seconds
           setTimeout(async () => {
-            console.log(`[Display] 🧹 Clearing HTTP error display for user ${userId}`);
+            console.log(
+              `[Display] 🧹 Clearing HTTP error display for user ${userId}`,
+            );
             await glassesDisplay.clear();
           }, 5000);
         }
         break;
       }
 
-      const taskData = await response.json();
+      // Query task from MongoDB directly
+      const db = getDb();
+      const taskData = await db.collection("tasks").findOne({ taskId });
+
+      if (!taskData) {
+        console.log(`[Poll #${attempts}] ❌ Task not found in database`);
+        log.error(`[Master Agent Voice] Task ${taskId} not found`);
+        break;
+      }
+
       console.log(`[Poll #${attempts}] 📊 Status: ${taskData.status}`);
 
-      if (taskData.status === 'completed' && taskData.result) {
-        console.log('\n========================================');
-        console.log('✅ TASK COMPLETED SUCCESSFULLY');
+      if (taskData.status === "completed" && taskData.result) {
+        console.log("\n========================================");
+        console.log("✅ TASK COMPLETED SUCCESSFULLY");
         console.log(`Task ID: ${taskId}`);
         console.log(`User: ${userId}`);
-        console.log(`Tools Used: ${taskData.result.tools_used?.join(', ') || 'N/A'}`);
-        console.log(`Synthesis length: ${taskData.result.synthesis?.length || 0} characters`);
-        console.log('========================================\n');
+        console.log(`Result type: ${taskData.result.type}`);
+        console.log(`Agent spawned: ${taskData.agentSpawned}`);
+        console.log(`Processing time: ${taskData.processingTimeMs || 0}ms`);
+        console.log("========================================\n");
 
-        console.log('📝 MASTER AGENT RESPONSE:');
-        console.log('----------------------------------------');
-        console.log(taskData.result.synthesis);
-        console.log('----------------------------------------\n');
+        console.log("📝 MASTER AGENT RESPONSE:");
+        console.log("----------------------------------------");
+        console.log("Glasses: " + taskData.result.glassesDisplay);
+        console.log(
+          "Webview: " +
+            (taskData.result.webviewContent?.substring(0, 200) || "N/A") +
+            "...",
+        );
+        console.log("----------------------------------------\n");
 
         // Log the result (audio speaking disabled for now)
         log.info(`[Master Agent Voice] Task completed for user ${userId}`);
 
-        // Show response on glasses
+        // Show response on glasses (use glassesDisplay text)
         if (glassesDisplay) {
-          await glassesDisplay.showResponse(taskData.result.synthesis);
+          await glassesDisplay.showResponse(
+            taskData.result.glassesDisplay || taskData.result.webviewContent,
+          );
 
           // Clear display after 10 seconds
           setTimeout(async () => {
@@ -895,20 +992,20 @@ export async function pollAndSpeakResult(
         // TODO: Re-enable audio when ready
         // await session.audio.speak(taskData.result.synthesis);
 
-        console.log('\n========================================');
-        console.log('✅ RESULT DISPLAYED ON GLASSES');
+        console.log("\n========================================");
+        console.log("✅ RESULT DISPLAYED ON GLASSES");
         console.log(`Task ID: ${taskId}`);
         console.log(`User: ${userId}`);
-        console.log('Status: Complete - display will clear in 10 seconds');
-        console.log('========================================\n');
+        console.log("Status: Complete - display will clear in 10 seconds");
+        console.log("========================================\n");
         break;
-      } else if (taskData.status === 'failed') {
-        console.log('\n========================================');
-        console.log('❌ TASK FAILED');
+      } else if (taskData.status === "failed") {
+        console.log("\n========================================");
+        console.log("❌ TASK FAILED");
         console.log(`Task ID: ${taskId}`);
         console.log(`User: ${userId}`);
         console.log(`Error: ${taskData.error}`);
-        console.log('========================================\n');
+        console.log("========================================\n");
 
         log.error(`[Master Agent Voice] Task failed: ${taskData.error}`);
 
@@ -918,7 +1015,9 @@ export async function pollAndSpeakResult(
 
           // Clear display after 5 seconds
           setTimeout(async () => {
-            console.log(`[Display] 🧹 Clearing error display for user ${userId}`);
+            console.log(
+              `[Display] 🧹 Clearing error display for user ${userId}`,
+            );
             await glassesDisplay.clear();
           }, 5000);
         }
@@ -929,8 +1028,10 @@ export async function pollAndSpeakResult(
       }
 
       // Still processing
-      console.log(`[Poll #${attempts}] ⏳ Still processing, waiting 2 seconds...`);
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      console.log(
+        `[Poll #${attempts}] ⏳ Still processing, waiting 2 seconds...`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     } catch (error: any) {
       console.log(`[Poll #${attempts}] ❌ Polling exception:`, error);
       log.error(`[Master Agent Voice] Polling error:`, error);
@@ -939,18 +1040,18 @@ export async function pollAndSpeakResult(
   }
 
   if (attempts >= maxAttempts) {
-    console.log('\n========================================');
-    console.log('⏱️  TASK TIMEOUT');
+    console.log("\n========================================");
+    console.log("⏱️  TASK TIMEOUT");
     console.log(`Task ID: ${taskId}`);
     console.log(`User: ${userId}`);
     console.log(`Attempts: ${attempts}/${maxAttempts}`);
-    console.log('========================================\n');
+    console.log("========================================\n");
 
     log.error(`[Master Agent Voice] Task timeout for user ${userId}`);
 
     // Show timeout error on glasses
     if (glassesDisplay) {
-      await glassesDisplay.showError('Request timed out');
+      await glassesDisplay.showError("Request timed out");
 
       // Clear display after 5 seconds
       setTimeout(async () => {
