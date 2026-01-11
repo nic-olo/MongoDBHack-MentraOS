@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { useMentraAuth } from '@mentra/react';
-import BottomNavigation from './components/BottomNavigation';
 import Test from './pages/WorkSpace';
 
 export default function App() {
   const { userId, isLoading, error, isAuthenticated } = useMentraAuth();
-  const [isDark, setIsDark] = useState(true);
+  const [isDark] = useState(false); // Light mode by default
 
   // Log authentication state to console
   useEffect(() => {
@@ -24,65 +24,36 @@ export default function App() {
     }
   }, [userId, isLoading, error, isAuthenticated]);
 
-  // Load theme preference from backend when user authenticates
-  useEffect(() => {
-    if (isAuthenticated && userId) {
-      console.log('🎨 [Theme] Loading theme preference for user:', userId);
-
-      fetch(`/api/theme-preference?userId=${encodeURIComponent(userId)}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.theme) {
-            console.log('🎨 [Theme] Loaded theme preference:', data.theme);
-            setIsDark(data.theme === 'dark');
-          }
-        })
-        .catch(error => {
-          console.error('🎨 [Theme] Failed to load theme preference:', error);
-          // Keep default theme on error
-        });
-    }
-  }, [isAuthenticated, userId]);
-
-  // Handle theme change and save to backend
-  const handleThemeChange = async (newIsDark: boolean) => {
-    // Update UI immediately for responsive feel
-    setIsDark(newIsDark);
-
-    // Save to backend if user is authenticated
-    if (userId) {
-      const theme = newIsDark ? 'dark' : 'light';
-      console.log(`🎨 [Theme] Saving theme preference for user ${userId}:`, theme);
-
-      try {
-        const response = await fetch('/api/theme-preference', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId, theme })
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-          console.log('🎨 [Theme] Theme preference saved successfully:', theme);
-        } else {
-          console.error('🎨 [Theme] Failed to save theme preference:', data);
-        }
-      } catch (error) {
-        console.error('🎨 [Theme] Error saving theme preference:', error);
-        // Continue using the theme locally even if save fails
-      }
-    }
-  };
 
   // Handle loading state
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-900">
-        <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500"></div>
-          <p className="text-gray-400">Loading authentication...</p>
-        </div>
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--surface-base)' }}>
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="flex flex-col items-center gap-6"
+        >
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+            className="w-16 h-16 rounded-2xl gradient-primary flex items-center justify-center"
+            style={{ boxShadow: 'var(--shadow-glow)' }}
+          >
+            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </motion.div>
+          <motion.p 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="text-base"
+            style={{ color: 'var(--color-gray-600)' }}
+          >
+            Loading authentication...
+          </motion.p>
+        </motion.div>
       </div>
     );
   }
@@ -90,14 +61,32 @@ export default function App() {
   // Handle error state
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-900">
-        <div className="text-center p-8">
-          <h2 className="text-red-500 text-2xl font-semibold mb-4">Authentication Error</h2>
-          <p className="text-red-400 font-medium mb-2">{error}</p>
-          <p className="text-gray-400 text-sm">
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--surface-base)' }}>
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center p-8 max-w-md"
+        >
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ delay: 0.2, type: "spring" }}
+            className="w-16 h-16 rounded-2xl mx-auto mb-6 flex items-center justify-center"
+            style={{ 
+              backgroundColor: 'var(--color-destructive-500)',
+              boxShadow: '0 0 30px rgba(239, 68, 68, 0.3)'
+            }}
+          >
+            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </motion.div>
+          <h2 className="text-2xl font-semibold mb-3" style={{ color: 'var(--color-destructive-500)' }}>Authentication Error</h2>
+          <p className="font-medium mb-2" style={{ color: 'var(--color-destructive-600)' }}>{error}</p>
+          <p className="text-sm" style={{ color: 'var(--color-gray-500)' }}>
             Please ensure you are opening this page from the MentraOS app.
           </p>
-        </div>
+        </motion.div>
       </div>
     );
   }
@@ -115,10 +104,14 @@ export default function App() {
   // }
 
   return (
-    <div className={`min-h-screen bg-white ${isDark ? 'dark' : 'light'}`} >
-      <div> </div>
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.5 }}
+      className={`min-h-screen ${isDark ? 'dark' : 'light'}`}
+      style={{ backgroundColor: 'var(--surface-base)' }}
+    >
       <Test />
-      {/* <BottomNavigation/> */}
-    </div>
+    </motion.div>
   );
 }

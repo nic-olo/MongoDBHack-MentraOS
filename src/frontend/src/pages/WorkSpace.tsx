@@ -227,7 +227,7 @@ function Test() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white font-mono">
+    <div className="flex h-screen overflow-hidden" style={{ backgroundColor: 'var(--surface-base)' }}>
       {/* Animated Sidebar */}
       <AnimatePresence>
         {isSideNavOpen && (
@@ -235,7 +235,7 @@ function Test() {
             initial={{ x: -280, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: -280, opacity: 0 }}
-            transition={{ duration: 0.3, ease: "easeInOut" }}
+            transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
           >
             <SideNav
               isMobile={isMobile}
@@ -257,16 +257,27 @@ function Test() {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
-            className="flex items-center justify-between px-4 py-3 border-b-2 border-black/10 bg-white"
+            className="flex items-center justify-between px-6 py-4"
+            style={{ 
+              borderBottom: '1px solid var(--border-subtle)',
+              backgroundColor: 'var(--surface-base)'
+            }}
           >
             <div className="flex items-center gap-3">
               {/* Toggle Button */}
               <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.3 }}
                 onClick={() => setIsSideNavOpen(!isSideNavOpen)}
-                className={`${isMobile ? 'w-8 h-8' : 'w-10 h-10'} bg-white border-2 border-black rounded-lg flex items-center justify-center hover:bg-black hover:text-white transition-colors`}
+                className={`${isMobile ? 'w-9 h-9' : 'w-10 h-10'} rounded-lg flex items-center justify-center transition-smooth focus-ring`}
+                style={{ 
+                  backgroundColor: 'var(--surface-elevated)',
+                  border: '1px solid var(--border-subtle)',
+                  color: 'var(--color-gray-700)'
+                }}
                 aria-label="Toggle sidebar"
               >
                 <svg
@@ -274,18 +285,19 @@ function Test() {
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
+                  strokeWidth={2}
                 >
                   {isSideNavOpen ? (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                   ) : (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
                   )}
                 </svg>
               </motion.button>
 
-              {/* SOGA Title */}
-              <h1 className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold text-black uppercase tracking-wider`}>
-                $ SOGA
+              {/* Title */}
+              <h1 className={`${isMobile ? 'text-base' : 'text-lg'} font-semibold`} style={{ color: 'var(--color-gray-900)', letterSpacing: 'var(--tracking-tight)' }}>
+                MentraOS Agent
               </h1>
             </div>
           </motion.div>
@@ -294,11 +306,19 @@ function Test() {
         {/* Desktop Toggle Button - Only when no messages */}
         {!isMobile && !hasMessages && (
           <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5 }}
             onClick={() => setIsSideNavOpen(!isSideNavOpen)}
-            className="absolute top-4 left-4 z-50 w-10 h-10 bg-white border-2 border-black rounded-lg flex items-center justify-center hover:bg-black hover:text-white transition-colors shadow-lg"
+            className="absolute top-6 left-6 z-50 w-10 h-10 rounded-lg flex items-center justify-center transition-smooth focus-ring"
+            style={{ 
+              backgroundColor: 'var(--surface-elevated)',
+              border: '1px solid var(--border-subtle)',
+              boxShadow: 'var(--shadow-md)',
+              color: 'var(--color-gray-700)'
+            }}
             aria-label="Toggle sidebar"
           >
             <svg
@@ -306,11 +326,12 @@ function Test() {
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
+              strokeWidth={2}
             >
               {isSideNavOpen ? (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               ) : (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
               )}
             </svg>
           </motion.button>
@@ -322,21 +343,33 @@ function Test() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: "easeOut" }}
-            className="flex-1 flex flex-col items-center justify-center p-6 bg-white"
+            transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1] }}
+            className="flex-1 flex flex-col items-center justify-center p-6"
+            style={{ backgroundColor: 'var(--surface-base)' }}
           >
             <div className="w-full max-w-3xl">
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2, duration: 0.5 }}
-                className="text-center mb-8"
+                className="text-center mb-12"
               >
-                <h1 className="text-3xl font-bold text-black mb-2 uppercase tracking-wider">
-                  $ SOGA
+                <motion.div
+                  initial={{ scale: 0.9 }}
+                  animate={{ scale: 1 }}
+                  transition={{ delay: 0.3, duration: 0.5 }}
+                  className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-6 gradient-primary"
+                  style={{ boxShadow: 'var(--shadow-glow)' }}
+                >
+                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                </motion.div>
+                <h1 className="text-4xl font-semibold mb-3 gradient-text" style={{ letterSpacing: 'var(--tracking-tight)' }}>
+                  Welcome to MentraOS
                 </h1>
-                <p className="text-black/60 text-sm">
-                  &gt; Start a conversation by typing a message below
+                <p className="text-base" style={{ color: 'var(--color-gray-500)' }}>
+                  Ask me anything about your codebase or start a conversation
                 </p>
               </motion.div>
 
@@ -365,24 +398,36 @@ function Test() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
                   transition={{ duration: 0.3 }}
-                  className="bg-white text-black px-6 py-3 border-b border-black"
+                  className="px-6 py-4"
+                  style={{ 
+                    background: 'linear-gradient(135deg, var(--color-primary-500) 0%, var(--color-accent-600) 100%)',
+                    borderBottom: '1px solid var(--border-subtle)'
+                  }}
                 >
                   <div className="max-w-3xl mx-auto flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="relative">
-                        <div className="w-2 h-2 bg-black animate-pulse"></div>
-                        <div className="absolute inset-0 w-2 h-2 bg-black/50 animate-ping"></div>
+                        <motion.div 
+                          animate={{ scale: [1, 1.2, 1] }}
+                          transition={{ duration: 2, repeat: Infinity }}
+                          className="w-2 h-2 bg-white rounded-full"
+                        />
+                        <motion.div 
+                          animate={{ scale: [1, 1.5, 1], opacity: [1, 0, 1] }}
+                          transition={{ duration: 2, repeat: Infinity }}
+                          className="absolute inset-0 w-2 h-2 bg-white rounded-full"
+                        />
                       </div>
                       <div>
-                        <p className="text-sm font-bold uppercase tracking-wide">[ ASYNC SESSION RUNNING ]</p>
-                        <p className="text-xs text-black/70 font-mono">
-                          &gt; {messages[messages.length - 1]?.progressMessage || 'Processing your request...'}
+                        <p className="text-sm font-semibold text-white">Agent Processing</p>
+                        <p className="text-xs text-white/80">
+                          {messages[messages.length - 1]?.progressMessage || 'Processing your request...'}
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <svg className="w-5 h-5 animate-spin text-white" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
                     </div>
@@ -392,7 +437,10 @@ function Test() {
             </AnimatePresence>
 
             {/* Chat Messages Area */}
-            <div className={`flex-1 overflow-y-auto p-6 bg-white ${messages.length === 0 ? 'flex items-center justify-center' : ''}`}>
+            <div 
+              className={`flex-1 overflow-y-auto p-6 ${messages.length === 0 ? 'flex items-center justify-center' : ''}`}
+              style={{ backgroundColor: 'var(--surface-base)' }}
+            >
               <div className="max-w-3xl mx-auto w-full">
                 {messages.length === 0 && (
                   <motion.div
@@ -401,14 +449,25 @@ function Test() {
                     transition={{ duration: 0.6, delay: 0.2 }}
                     className="text-center"
                   >
-                    <h1 className={`${isMobile ? 'text-4xl' : 'text-5xl'} font-bold text-black mb-4 uppercase tracking-wider`}>
-                      $ SOGA
+                    <motion.div
+                      initial={{ scale: 0.9 }}
+                      animate={{ scale: 1 }}
+                      transition={{ delay: 0.3, duration: 0.5 }}
+                      className="inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-6 gradient-primary"
+                      style={{ boxShadow: 'var(--shadow-glow)' }}
+                    >
+                      <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                      </svg>
+                    </motion.div>
+                    <h1 className={`${isMobile ? 'text-3xl' : 'text-4xl'} font-semibold mb-3 gradient-text`} style={{ letterSpacing: 'var(--tracking-tight)' }}>
+                      MentraOS Agent
                     </h1>
-                    <p className={`${isMobile ? 'text-sm' : 'text-base'} text-gray-500 mb-2 font-mono tracking-wide`}>
+                    <p className={`${isMobile ? 'text-sm' : 'text-base'} mb-2`} style={{ color: 'var(--color-gray-600)' }}>
                       Smart Orchestrated Glasses Agents
                     </p>
-                    <p className={`${isMobile ? 'text-xs' : 'text-sm'} text-black/60 mt-6 font-mono`}>
-                      &gt; Start a conversation by typing a message below
+                    <p className={`${isMobile ? 'text-xs' : 'text-sm'} mt-6`} style={{ color: 'var(--color-gray-500)' }}>
+                      Start a conversation by typing a message below
                     </p>
                   </motion.div>
                 )}
@@ -420,20 +479,24 @@ function Test() {
                       {messages.map((msg, idx) => (
                         <motion.div
                           key={idx}
-                          initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                          initial={{ opacity: 0, y: 20, scale: 0.98 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.95 }}
+                          exit={{ opacity: 0, scale: 0.98 }}
                           transition={{
-                            duration: 0.4,
-                            ease: "easeOut",
-                            delay: idx * 0.1
+                            duration: 0.3,
+                            ease: [0.4, 0, 0.2, 1],
+                            delay: idx * 0.05
                           }}
                         >
                           {msg.role === 'user' ? (
                             <div className="flex justify-end">
-                              <div className="max-w-[80%] px-4 py-3 bg-black text-white border-2 border-black rounded-2xl shadow-lg">
-                                <p className="text-sm whitespace-pre-wrap font-mono">&gt; {msg.content}</p>
-                              </div>
+                              <motion.div 
+                                whileHover={{ scale: 1.01 }}
+                                className="max-w-[80%] px-4 py-3 rounded-2xl gradient-primary text-white"
+                                style={{ boxShadow: 'var(--shadow-md)' }}
+                              >
+                                <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                              </motion.div>
                             </div>
                           ) : (
                             <AgentMessage
@@ -471,13 +534,16 @@ function Test() {
             <motion.div
               initial={{ opacity: 0, y: 50 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
-              className="border-t-2 border-black/10 bg-white"
+              transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1], delay: 0.2 }}
+              style={{ 
+                borderTop: '1px solid var(--border-subtle)',
+                backgroundColor: 'var(--surface-base)'
+              }}
             >
               <QueryPrompt
                 isMobile={isMobile}
                 onSendMessage={handleSendMessage}
-                placeholder="$ Enter command..."
+                placeholder="Ask me anything..."
               />
             </motion.div>
           </>

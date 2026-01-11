@@ -13,7 +13,7 @@ interface TaskResponse {
   result?: {
     query: string;
     tools_used: string[];
-    tool_results: Record<string, any>;
+    tool_results: Record<string, unknown>;
     synthesis: string;
     timestamp: string;
   };
